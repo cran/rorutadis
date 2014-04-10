@@ -1,0 +1,36 @@
+\name{calculateAssignments}
+\alias{calculateAssignments}
+\title{Calculate assignments}
+\usage{
+calculateAssignments(problem, necessary)
+}
+\arguments{
+  \item{problem}{Problem for which assignments will be
+  calculated.}
+
+  \item{necessary}{Whether necessary or possible
+  assignments.}
+}
+\value{
+\emph{n} x \emph{p} logical matrix, where each row
+represents one of \emph{n} alternatives and each column
+represents one of \emph{p} classes. Element \code{[i, h]}
+is \code{TRUE} if: \itemize{ \item for necessary
+assignments: alternative \code{a_i} is always assigned to
+class \code{C_h}, \item for possible assignments:
+alternative \code{a_i} can be assigned to class \code{C_h}.
+}
+}
+\description{
+This function calculates possible and necessary
+assignments.
+}
+\examples{
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+
+possibleAssignments <- calculateAssignments(problem, FALSE)
+necessaryAssignments <- calculateAssignments(problem, TRUE)
+}
+

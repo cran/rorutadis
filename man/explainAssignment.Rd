@@ -1,0 +1,55 @@
+\name{explainAssignment}
+\alias{explainAssignment}
+\title{Explain assignment}
+\usage{
+explainAssignment(alternative, classInterval, problem)
+}
+\arguments{
+  \item{alternative}{Index of an alternative.}
+
+  \item{classInterval}{Two-element vector \code{c(l, u)}
+  that represents an assignment of \code{alternative} to
+  class interval \code{[C_l, C_u]} (\code{l <= u}).}
+
+  \item{problem}{Problem for which computations will be
+  performed.}
+}
+\value{
+List of all preferential reducts for an assignment relation
+or \code{NULL} if an assignment is not influenced by
+restrictions. Each element of that list is a preferential
+reduct represented as a vector of restriction indices. To
+identify preferential core use
+\code{\link{getPreferentialCore}}. To find out about
+restrictions by their indices use
+\code{\link{getRestrictions}}. If there was not possible to
+find explanations the function will return \code{NULL}.
+}
+\description{
+This function allows to obtain explanation of an
+alternative assignment to a specific class interval or one
+class in case if assignment is necessary. The function
+returns all preferential reducts for an assignment
+relation.
+}
+\examples{
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.5), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+
+possibleAssignments <- calculateAssignments(problem, FALSE)
+alternative <- 4
+assignment <- c(min(which(possibleAssignments[alternative, ])),
+               max(which(possibleAssignments[alternative, ])))
+
+preferentialReducts <- explainAssignment(alternative,
+   assignment, problem)
+preferentialCore <- getPreferentialCore(preferentialReducts)
+coreRestrictions <- getRestrictions(problem, preferentialCore)
+}
+\seealso{
+\code{\link{getPreferentialCore}}
+\code{\link{getRestrictions}}
+\code{\link{calculateAssignments}}
+}
+

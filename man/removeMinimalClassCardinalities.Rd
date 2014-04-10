@@ -1,0 +1,40 @@
+\name{removeMinimalClassCardinalities}
+\alias{removeMinimalClassCardinalities}
+\title{Remove minimal class cardinality restrictions}
+\usage{
+removeMinimalClassCardinalities(problem, ...)
+}
+\arguments{
+  \item{problem}{Problem from which preference information
+  will be removed.}
+
+  \item{...}{Two-element vectors and/or integers. Each
+  argument represents restriction to remove. If \code{c(i,
+  j)} vector was provided then defined minimal cardinality
+  \emph{j} for class \emph{C_i} will be removed. In case
+  where single value \code{i} was given a restriction for
+  class \emph{a_i} will be removed regardless of minimal
+  cardinality value. If a specific restriction was not
+  found nothing will happen.}
+}
+\value{
+Problem with removed preference information.
+}
+\description{
+This function allows to remove defined minimal cardinality
+of particular classes.
+}
+\examples{
+# 4 alternatives, 2 gain criteria, 3 classes, monotonously increasing
+# and general marginal value functions
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+
+# set minimal class cardinalities:
+# at least one alternative has to be assigned to class 2
+# and at least one alternative has to be assigned to class 3
+problem <- addMinimalClassCardinalities(problem, c(2, 1), c(3, 1))
+# remove defined restriction for class 2
+problem <- removeMinimalClassCardinalities(problem, 2)
+}
+

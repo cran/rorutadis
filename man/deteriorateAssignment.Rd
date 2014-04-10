@@ -1,0 +1,50 @@
+\name{deteriorateAssignment}
+\alias{deteriorateAssignment}
+\title{Post factum analysis: deteriorate assignment}
+\usage{
+deteriorateAssignment(alternative, atLeastToClass, criteriaManipulability,
+  necessary, problem)
+}
+\arguments{
+  \item{alternative}{An alternative for assignment
+  deterioration.}
+
+  \item{atLeastToClass}{An assignment to investigate.}
+
+  \item{criteriaManipulability}{Vector containing a logical
+  value for each criterion. Each value denotes whether
+  multiplying by \code{rho} on corresponding criterion is
+  allowed or not. At least one criterion has to be
+  available for that manipulation.}
+
+  \item{necessary}{Whether necessary or possible assignment
+  is considered.}
+
+  \item{problem}{Problem for which deterioration will be
+  performed.}
+}
+\value{
+Value of \code{rho} or \code{NULL} if given assignment is
+not possible in any scenario.
+}
+\description{
+This function checks how much an alternative evaluations
+can be deteriorated so that that alternative would stay
+possibly (or necessarily) in at least some specific class.
+Deterioration is based on minimization value of \code{rho}
+in multiplication of an alternative evaluations on selected
+criteria by value \code{rho} (where \code{0 < rho <= 1}).
+\strong{Note!} This function works for problems with only
+positive alternative evaluations.
+}
+\examples{
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.5), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+
+rho <- deteriorateAssignment(4, 1, c(TRUE, TRUE), FALSE, problem)
+}
+\seealso{
+\code{\link{improveAssignment}}
+}
+

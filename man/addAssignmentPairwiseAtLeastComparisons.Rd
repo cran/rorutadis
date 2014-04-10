@@ -1,0 +1,45 @@
+\name{addAssignmentPairwiseAtLeastComparisons}
+\alias{addAssignmentPairwiseAtLeastComparisons}
+\title{Add assignment pairwise \emph{at least} comparisons}
+\usage{
+addAssignmentPairwiseAtLeastComparisons(problem, ...)
+}
+\arguments{
+  \item{problem}{Problem to which preference information
+  will be added.}
+
+  \item{...}{Comparisons as three-element vectors. Each
+  vector \code{c(i, j, k)} represents a single assignment
+  comparison: alternative \emph{a_i} has to be assigned to
+  class at least better by \emph{k} classes then class of
+  \emph{a_j}.}
+}
+\value{
+Problem with added comparisons.
+}
+\description{
+The comparison of a pair of alternatives may indicate that
+\emph{a_i} should be assigned to a class at least as good
+as class of \emph{a_j} or at least better by \emph{k}
+classes. The function
+\code{assignmentPairwiseAtLeastComparisons} allows to
+define such pairwise comparisons.
+}
+\examples{
+# 4 alternatives, 2 gain criteria, 3 classes, monotonously increasing
+# and general marginal value functions
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+
+# add comparisons:
+# alternative 2 to class at least as good as class of alternative 1
+# alternative 4 to class at least better by 1 class then class
+# of alternative 3
+problem <- addAssignmentPairwiseAtLeastComparisons(problem,
+   c(4, 3, 1), c(2, 1, 0))
+}
+\seealso{
+\code{\link{buildProblem}}
+\code{\link{removeAssignmentPairwiseAtLeastComparisons}}
+}
+

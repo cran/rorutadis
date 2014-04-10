@@ -1,0 +1,52 @@
+\name{buildProblem}
+\alias{buildProblem}
+\title{Build a representation of a problem}
+\usage{
+buildProblem(perf, nrClasses, strictVF, criteria, characteristicPoints)
+}
+\arguments{
+  \item{perf}{A \emph{n} x \emph{m} performance matrix of
+  \emph{n} alternatives evaluated on \emph{m} gain
+  criteria.}
+
+  \item{nrClasses}{Number of classes.}
+
+  \item{strictVF}{\code{TRUE} for strictly monotonic
+  marginal value functions, \code{FALSE} for weakly
+  monotonic.}
+
+  \item{criteria}{A vector containing type of each
+  criterion (\code{'g'} - gain, \code{'c'} - cost).}
+
+  \item{characteristicPoints}{A vector of integers that for
+  each criterion contains number of characteristic points
+  or \emph{0} for general marginal value function.}
+}
+\value{
+Representation of a problem as a list with named members.
+}
+\description{
+This function creates representation of a given problem for
+usage in farther computations.
+}
+\examples{
+# 4 alternatives, 2 gain criteria, 3 classes, monotonously increasing
+# and general marginal value functions
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+}
+\seealso{
+\code{\link{addAssignmentsLB}}
+\code{\link{removeAssignmentsLB}}
+\code{\link{addAssignmentsUB}}
+\code{\link{removeAssignmentsUB}}
+\code{\link{addAssignmentPairwiseAtLeastComparisons}}
+\code{\link{removeAssignmentPairwiseAtLeastComparisons}}
+\code{\link{addAssignmentPairwiseAtMostComparisons}}
+\code{\link{removeAssignmentPairwiseAtMostComparisons}}
+\code{\link{addMinimalClassCardinalities}}
+\code{\link{removeMinimalClassCardinalities}}
+\code{\link{addMaximalClassCardinalities}}
+\code{\link{removeMaximalClassCardinalities}}
+}
+

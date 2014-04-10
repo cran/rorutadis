@@ -1,0 +1,40 @@
+\name{getCharacteristicPoints}
+\alias{getCharacteristicPoints}
+\title{Get characteristic points}
+\usage{
+getCharacteristicPoints(problem, solution)
+}
+\arguments{
+  \item{problem}{Problem whose model was solved.}
+
+  \item{solution}{Result of model solving (e.g. result of
+  \code{\link{findRepresentativeFunction}} or
+  \code{\link{investigateUtility}}).}
+}
+\value{
+List of \code{m} matrices for each of \code{m} criteria.
+Each row \code{c(g, u)} of each matrix contains coordinates
+of a single characteristic point, where \code{g} -
+evaluation on corresponding criterion, \code{u} - marginal
+utility.
+}
+\description{
+This function extracts values of characteristic points from
+model solution.
+}
+\examples{
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+
+representativeFunction <- findRepresentativeFunction(problem, 0)
+characteristicPoints <- getCharacteristicPoints(problem, representativeFunction)
+}
+\seealso{
+\code{\link{findRepresentativeFunction}}
+\code{\link{getAssignments}}
+\code{\link{getMarginalUtilities}}
+\code{\link{getThresholds}}
+\code{\link{investigateUtility}}
+}
+

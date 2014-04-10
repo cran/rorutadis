@@ -1,0 +1,38 @@
+\name{getThresholds}
+\alias{getThresholds}
+\title{Get thresholds}
+\usage{
+getThresholds(problem, solution)
+}
+\arguments{
+  \item{problem}{Problem whose model was solved.}
+
+  \item{solution}{Result of model solving (e.g. result of
+  \code{\link{findRepresentativeFunction}} or
+  \code{\link{investigateUtility}}).}
+}
+\value{
+Vector containing \code{h-1} thresholds from \code{t_1} to
+\code{t_h-1} where \code{t_p-1} is lower threshold of class
+\code{C_p} and \code{h} is number of classes.
+}
+\description{
+This function extracts values of thresholds from model
+solution.
+}
+\examples{
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+
+representativeFunction <- findRepresentativeFunction(problem, 0)
+thresholds <- getThresholds(problem, representativeFunction)
+}
+\seealso{
+\code{\link{findRepresentativeFunction}}
+\code{\link{getAssignments}}
+\code{\link{getCharacteristicPoints}}
+\code{\link{getMarginalUtilities}}
+\code{\link{investigateUtility}}
+}
+

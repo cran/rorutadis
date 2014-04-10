@@ -1,0 +1,53 @@
+\name{drawUtilityPlots}
+\alias{drawUtilityPlots}
+\title{Draw marginal value functions and chart of alternative utilities}
+\usage{
+drawUtilityPlots(problem, solution, printLabels = TRUE, criteria = NULL,
+  plotsPerRow = 2, descending = NULL)
+}
+\arguments{
+  \item{problem}{Problem whose model was solved.}
+
+  \item{solution}{Result of model solving (e.g. result of
+  \code{\link{findRepresentativeFunction}} or
+  \code{\link{investigateUtility}}).}
+
+  \item{printLabels}{Whether print alternatives identifiers
+  on marginal value function plots and utility values on
+  alternative utility chart or not (default \code{TRUE}).}
+
+  \item{criteria}{Vector containing \emph{0} for utility
+  chart and/or indices of criteria for which marginal value
+  functions should be plotted. If this parameter was
+  \code{NULL} functions for all criteria and utility chart
+  will be plotted (default \code{NULL}).}
+
+  \item{plotsPerRow}{Number of plots per row (default
+  \code{2}).}
+
+  \item{descending}{Mode of sorting alternatives on utility
+  chart: \itemize{ \item \code{NULL} - unsorted, preserved
+  \code{problem$perf} order, \item \code{TRUE} - sorted
+  descending by value of utility, \item \code{FALSE} -
+  sorted ascending by value of utility. }}
+}
+\value{
+Plot.
+}
+\description{
+This function draws marginal value functions and
+alternative utilities chart.
+}
+\examples{
+perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+problem <- buildProblem(perf, 3, FALSE, c('c', 'g'), c(3, 3))
+problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+
+representativeFunction <- findRepresentativeFunction(problem, 0)
+drawUtilityPlots(problem, representativeFunction)
+}
+\seealso{
+\code{\link{findRepresentativeFunction}}
+\code{\link{investigateUtility}}
+}
+
