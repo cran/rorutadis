@@ -94,7 +94,6 @@ buildAltVariableMatrix <- function(perf) {
   nrAlts <- nrow(perf)
   nrCrit <- ncol(perf)
   nrVars <- getNrVars(levels)
-  
   resMat <- matrix(nrow = nrAlts, ncol = nrVars)
   
   for (i in seq_len(nrAlts)) {

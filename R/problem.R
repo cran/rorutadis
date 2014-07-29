@@ -6,7 +6,7 @@
 #' in farther computations.
 #'
 #' @param perf A \emph{n} x \emph{m} performance matrix of \emph{n} alternatives evaluated
-#' on \emph{m} gain criteria.
+#' on \emph{m} criteria.
 #' @param nrClasses Number of classes.
 #' @param strictVF \code{TRUE} for strictly monotonic marginal value functions,
 #' \code{FALSE} for weakly monotonic.

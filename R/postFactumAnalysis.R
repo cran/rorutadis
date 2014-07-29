@@ -49,7 +49,7 @@ isModelConsistentForRho <- function(alternative, atLeastToClass, criteria, neces
 #' in at least some specific class. Deterioration is based on minimization value of
 #' \code{rho} in multiplication of an alternative evaluations on selected
 #' criteria by value \code{rho} (where \code{0 < rho <= 1}). 
-#' \strong{Note!} This function works for problems with only positive
+#' \strong{Note!} This function works for problems with only non-negative
 #' alternative evaluations.
 #' @param alternative An alternative for assignment deterioration.
 #' @param atLeastToClass An assignment to investigate.
@@ -74,8 +74,8 @@ deteriorateAssignment <- function(alternative,
                                   criteriaManipulability,
                                   necessary,
                                   problem) {
-  if (min(problem$perf) <= 0) {
-    stop("Function deteriorateAssignment works only for cases with positive evaluations.")
+  if (min(problem$perf) < 0) {
+    stop("Function deteriorateAssignment works only for cases with non-negative evaluations.")
   }
   
   if (length(which(criteriaManipulability) == TRUE) == 0) {
@@ -85,33 +85,54 @@ deteriorateAssignment <- function(alternative,
   if (length(which(problem$criteria == 'c')) != 0) {
     stop("Function deteriorateAssignment works only for cases with no cost criterion.")
   }
-      
+  
+  if (sum(problem$perf[alternative, which(criteriaManipulability == TRUE)]) == 0) {
+    stop("All performances of the alternative on selected criteria are equal to zero. Analysis cannot be performed.")
+  }
+  
   if (necessary) {
     if (is.null(deteriorateAssignment(alternative, atLeastToClass,
                                       criteriaManipulability, FALSE, problem)))
       return (NULL)
   }
   
-  minimums <- c()
+  limits <- c()
   original <- problem$perf[alternative, ]
   
   for (criterion in 1:ncol(problem$perf)) {
     if (criteriaManipulability[criterion]) {
-      minimums <- c(minimums, min(problem$perf[, criterion]))
+      limits <- c(limits, min(problem$perf[, criterion]))
     }
     else {
-      minimums <- c(minimums, problem$perf[alternative, criterion])
+      limits <- c(limits, problem$perf[alternative, criterion])
     }
   }
   
-  left <- min(minimums / original)
+  minimums <- limits
+  
+  if (any(criteriaManipulability == FALSE)) {
+    minimums <- minimums[-which(criteriaManipulability == FALSE)]
+    original <- original[-which(criteriaManipulability == FALSE)]
+  }
+  
+  zeroZero <- which(minimums == 0 & original == 0)
+  
+  if (length(zeroZero) > 0) {
+    minimums <- minimums[-zeroZero]
+    original <- original[-zeroZero]
+  }
+  
+  left <- 1
+  if (length(original) > 0) {
+    left <- min(minimums / original)
+  }
   right <- 1
   current <- 1# not left + (right - left)/ 2 due to an immediate and accurate response if deterioration is not possible
   valueForLastTrue <- NULL
   
   repeat {
     if (isModelConsistentForRho(alternative, atLeastToClass, criteriaManipulability, necessary,
-                                FALSE, minimums, problem, current)) {
+                                FALSE, limits, problem, current)) {
       if (RORUTADIS_VERBOSE) print (paste("Model is consistent for rho =", current))
       
       if (necessary) {
@@ -165,7 +186,7 @@ deteriorateAssignment <- function(alternative,
 #' alternative evaluations on selected criteria have to be multiplied for that alternative to be 
 #' possibly (or necessarily) assigned to at least some specific class
 #' (\code{rho >= 1}). 
-#' \strong{Note!} This function works for problems with only positive
+#' \strong{Note!} This function works for problems with only non-negative
 #' alternative evaluations.
 #' @param alternative An alternative for assignment improvement.
 #' @param atLeastToClass Desired assignment.
@@ -193,8 +214,8 @@ improveAssignment <- function(alternative,
                               criteriaManipulability,
                               necessary,
                               problem) {
-  if (min(problem$perf) <= 0) {
-    stop("Function improveAssignment works only for cases with positive evaluations.")
+  if (min(problem$perf) < 0) {
+    stop("Function improveAssignment works only for cases with non-negative evaluations.")
   }
   
   if (length(which(criteriaManipulability) == TRUE) == 0) {
@@ -204,32 +225,53 @@ improveAssignment <- function(alternative,
   if (length(which(problem$criteria == 'c')) != 0) {
     stop("Function improveAssignment works only for cases with no cost criterion.")
   }
+  
+  if (sum(problem$perf[alternative, which(criteriaManipulability == TRUE)]) == 0) {
+    stop("All performances of the alternative on selected criteria are equal to zero. Analysis cannot be performed.")
+  }
       
   if (necessary) {
     if (is.null(improveAssignment(alternative, atLeastToClass, criteriaManipulability, FALSE, problem)))
       return (NULL)
   }
   
-  maximums <- c()
+  limits <- c()
   original <- problem$perf[alternative, ]
   
   for (criterion in 1:ncol(problem$perf)) {
     if (criteriaManipulability[criterion]) {
-      maximums <- c(maximums, max(problem$perf[, criterion]))
+      limits <- c(limits, max(problem$perf[, criterion]))
     }
     else {
-      maximums <- c(maximums, problem$perf[alternative, criterion])
+      limits <- c(limits, problem$perf[alternative, criterion])
     }
   }
   
+  maximums <- limits
+  
+  if (any(criteriaManipulability == FALSE)) {
+    maximums <- maximums[-which(criteriaManipulability == FALSE)]
+    original <- original[-which(criteriaManipulability == FALSE)]
+  }
+  
+  zero <- which(original == 0)
+  
+  if (length(zero) > 0) {
+    maximums <- maximums[-zero]
+    original <- original[-zero]
+  }
+  
   left <- 1
-  right <- max(maximums / original)
+  right <- 1
+  if (length(original) > 0) {
+    right <- max(maximums / original)
+  }
   current <- 1# not left + (right - left)/ 2 due to an immediate and accurate response if improvement is not possible
   valueForLastTrue <- NULL
   
   repeat {
     if (isModelConsistentForRho(alternative, atLeastToClass, criteriaManipulability, necessary,
-                                TRUE, maximums, problem, current)) {
+                                TRUE, limits, problem, current)) {
       if (RORUTADIS_VERBOSE) print (paste("Model is consistent for rho =", current))
       
       if (necessary) {
