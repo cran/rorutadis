@@ -1,634 +1,97 @@
-#### INDICES, NUMBER OF VARIABLES ETC.
+#### HELPERS
 
-getNrAlt <- function(problem) {
-  return (nrow(problem$perf))
-}
-
-getNrAltVars <- function(problem) {
-  return (sum(as.numeric(lapply(getLevels(problem$perf), length))))
-}
-
-getEpsilonIndex <- function(problem) {
-  return (getNrAltVars(problem) + 1)
-}
-
-getFirstCharacteristicPointIndex <- function(problem) {
-  if (sum(getNrLinearSegments(problem$characteristicPoints)) == 0)
-    stop("There is no characteristic points in this problem.")
-  return (getEpsilonIndex(problem) + 1)
-}
-
-getFirstThresholdIndex <- function(problem) {
-  return (getEpsilonIndex(problem) + sum(getNrLinearSegments(problem$characteristicPoints)) + 1)
-}
-
-getLastThresholdIndex <- function(problem) {
-  return (getFirstThresholdIndex(problem) + problem$nrClasses - 2)
-}
-
-getNrPairAtLeastCompVars <- function(nrClasses, assignmentPairwiseAtLeastComparisons) {
-  if (!is.null(assignmentPairwiseAtLeastComparisons)) {
-    return (sum(nrClasses - assignmentPairwiseAtLeastComparisons[, 3]))
-  }
-  else {
-    return (0)
-  }
-}
-
-getNrPairAtMostCompVars <- function(nrClasses, assignmentPairwiseAtMostComparisons) {
-  if (!is.null(assignmentPairwiseAtMostComparisons)) {
-    return (sum(nrClasses - assignmentPairwiseAtMostComparisons[, 3]))
-  }
-  else {
-    return (0)
-  }
-}
-
-getNrPairCompBinVars <- function(problem) {
-  return (getNrPairAtLeastCompVars(problem$nrClasses,
-                                   problem$assignmentPairwiseAtLeastComparisons)
-          + getNrPairAtMostCompVars(problem$nrClasses,
-                                    problem$assignmentPairwiseAtMostComparisons))
-}
-
-getFirstPairCompBinVarIndex <- function(problem) {
-  if (getNrPairCompBinVars(problem) == 0)
-    stop("There is no pairwice comparisons in this problem.")
-  return (getLastThresholdIndex(problem) + 1)
-}
-
-getLastPairCompBinVarIndex <- function(problem) {
-  return (getFirstPairCompBinVarIndex(problem) + getNrPairCompBinVars(problem) - 1)
-}
-
-getFirstClAsgnBinVarIndex <- function(problem) {
-  return (getLastThresholdIndex(problem) + getNrPairCompBinVars(problem) + 1)
-}
-
-getLastClAsgnBinVarIndex <- function(problem) {
-  return (getLastThresholdIndex(problem) + getNrPairCompBinVars(problem) +
-            problem$nrClasses * nrow(problem$perf))
-}
-#### BUILDING MODEL HELPERS
-
-getLevels <- function(perf) {
-  res <- list()
-  for (i in 1:ncol(perf)) {
-    res[[i]] <- sort(unique(perf[, i]))
-  }
-  return (res)
-}
-
-getNrVars <- function(levels) {
-  return (sum(as.numeric(lapply(levels, length))) + 1)# + 1 for epsilon
-}
-
-getOffsets <- function(levels) {
-  x <- cumsum(lapply(levels, length))
-  return (c(1, x[1:length(x) - 1] + 1))
-}
-
-buildAltVariableMatrix <- function(perf) {
-  levels <- getLevels(perf)
-  offsets <- getOffsets(levels)
-  nrAlts <- nrow(perf)
-  nrCrit <- ncol(perf)
-  nrVars <- getNrVars(levels)
-  resMat <- matrix(nrow = nrAlts, ncol = nrVars)
+buildLBAssignmentsConstraint <- function(alternative, atLeastToClass, model, excludingVariableIndex = NULL) {
+  if (atLeastToClass <= 1 || atLeastToClass > model$nrClasses)
+    return (NULL)
   
-  for (i in seq_len(nrAlts)) {
-    vec <- array(0, dim = nrVars)
-    indices <- sapply(1:nrCrit, function(x) { which(levels[[x]] == perf[i, x]) })
-    vec[indices + offsets - 1] <- 1
-    resMat[i, ] <- vec
+  lhs <- ua(alternative, ncol(model$constraints$lhs), model$perfToModelVariables)
+  lhs[model$firstThresholdIndex + atLeastToClass - 2] <- -1
+  rhs <- 0
+  
+  if (!is.null(excludingVariableIndex)) {
+    lhs[excludingVariableIndex] <- -RORUTADIS_BIGM
+    rhs <- -RORUTADIS_BIGM
   }
   
-  return (resMat)
+  return (list(lhs = lhs, dir = ">=", rhs = rhs))
 }
 
-addVarialbesToModel <- function(model, variables) {
+buildUBAssignmentsConstraint <- function(alternative, atMostToClass, model, excludingVariableIndex = NULL) {
+  if (atMostToClass < 1 || atMostToClass >= model$nrClasses)
+    return (NULL)
+  
+  lhs <- ua(alternative, ncol(model$constraints$lhs), model$perfToModelVariables)
+  lhs[model$firstThresholdIndex + atMostToClass - 1] <- -1
+  rhs <- 0
+  
+  if (is.null(model$epsilonIndex)) {
+    rhs <- -RORUTADIS_MINEPS
+  } else {
+    lhs[model$epsilonIndex] <- 1
+  }
+  
+  if (!is.null(excludingVariableIndex)) {
+    lhs[excludingVariableIndex] <- RORUTADIS_BIGM
+    rhs <- rhs + RORUTADIS_BIGM
+  }
+  
+  return (list(lhs = lhs, dir = "<=", rhs = rhs))
+}
+
+addVarialbesToModel <- function(constraints, variables) {
   for (var in variables)
-    model$lhs <- cbind(model$lhs, 0)
-  model$types <- c(model$types, variables)
-  return (model)
+    constraints$lhs <- cbind(constraints$lhs, 0)
+  constraints$types <- c(constraints$types, variables)
+  return (constraints)
 }
 
-getEvaluation <- function(perf, altVars, level, indexOfVar) {
-  for (i in seq_len(nrow(altVars))) {
-    if (altVars[i, indexOfVar] == 1) {
-      return (perf[i, level])
-    }
-  }
+extendModelWithAssignmentVariables <- function(model) {
+  nrAlternatives <- nrow(model$perfToModelVariables)
+  nrClasses <- model$nrClasses
   
-  stop("Invalid arguments.")
-}
-
-
-#### BUILDING CONSTRAINS FOR MODEL HELPERS
-
-###### MONOTONOUS, NORMLIZATION, EPSILON > 0
-
-buildFirstLevelZeroConstraints <- function(perf, criteria) {
-  levels <- getLevels(perf)
-  offsets <- getOffsets(levels)
-  nrVars <- getNrVars(levels)
+  firstBinaryVariableIndex <- ncol(model$constraints$lhs) + 1
   
-  res <- matrix(0, nrow = length(offsets), ncol = nrVars)
+  model$constraints <- addVarialbesToModel(model$constraints, rep("B", nrAlternatives * model$nrClasses))
+  nrVariables <- ncol(model$constraints$lhs)
   
-  for (i in seq_len(length(offsets))) {
-    if (criteria[i] == 'g')
-      res[i, offsets[i]] <- 1
-    else
-      res[i, offsets[i] + length(levels[[i]]) - 1] <- 1
-  }
-  
-  return (list(lhs = res,
-               dir = rep("==", length(offsets)),
-               rhs = rep(0, length(offsets))))
-}
-
-buildBestLevelsAddToUnityConstraint <- function(perf, criteria) {
-  levels <- getLevels(perf)
-  offsets <- getOffsets(levels)
-  nrVars <- getNrVars(levels)
-  
-  lhs <- rep(0, nrVars)
-  ind <- c((offsets - 1)[-1], nrVars - 1)
-  
-  for (i in seq_len(length(offsets))) {
-    if (criteria[i] == 'g')
-      lhs[offsets[i] + length(levels[[i]]) - 1] <- 1
-    else
-      lhs[offsets[i]] <- 1
-  }
-  
-  return (list(lhs = lhs, dir = "==", rhs = 1))
-}
-
-buildEpsilonStrictlyPositiveConstraint <- function(nrVars, epsilonIndex) {
-  lhs <- rep(0, nrVars)
-  lhs[epsilonIndex] <- 1
-  return (list(lhs = lhs, dir = ">=", rhs = RORUTADIS_MINEPS))
-}
-
-buildMonotonousAndCharacteristicPointsConstraints <- function(perf,
-                                                              criteria,
-                                                              characteristicPoints,
-                                                              strictVF) {  
-  levels <- getLevels(perf)
-  offsets <- getOffsets(levels)
-  epsilonIndex <- getNrVars(levels)
-  linearSegments <- getNrLinearSegments(characteristicPoints)
-  nrOutputVars <- epsilonIndex + sum(linearSegments)
-  firstCharacteristicPointIndex <- epsilonIndex + 1
-  altVars <- buildAltVariableMatrix(perf)
-  
-  resLhs <- c()
-  resDir <- c()
-  resRhs <- c()
-  
-  for (i in seq_len(length(levels))) {
-    if (linearSegments[i] == 0) {
-      for (j in seq_len(length(levels[[i]]) - 1)) {
-        index <- offsets[i] + j - 1        
-        lhs <- array(0, dim = nrOutputVars)
-        lhs[index] <- 1
-        lhs[index + 1] <- -1
-        if (criteria[i] == 'g') {
-          if (strictVF == TRUE) {
-            lhs[epsilonIndex] <- 1
-          }
-          resDir <- c(resDir, "<=")
-        }
-        else {
-          if (strictVF == TRUE) {
-            lhs[epsilonIndex] <- -1
-          }
-          resDir <- c(resDir, ">=")
+  for (i in seq_len(nrAlternatives)) {
+    for (h in seq_len(nrClasses)) {        
+      if (h > 1) {
+        lhs <- ua(i, nrVariables, model$perfToModelVariables)
+        lhs[model$firstThresholdIndex + h - 2] <- -1
+        lhs[firstBinaryVariableIndex + (i - 1) * nrClasses + h - 1] <- -RORUTADIS_BIGM
+        
+        model$constraints <- combineConstraints(model$constraints,
+                                                list(lhs = lhs, dir = ">=", rhs = -RORUTADIS_BIGM))
+      }
+      
+      if (h < nrClasses) {
+        lhs <- ua(i, nrVariables, model$perfToModelVariables)
+        rhs <- 0
+        lhs[model$firstThresholdIndex + h - 1] <- -1
+        
+        if (is.null(model$epsilonIndex)) {
+          rhs <- -RORUTADIS_MINEPS
+        } else {
+          lhs[model$epsilonIndex] <- 1
         }
         
-        resLhs <- rbind(resLhs, lhs)
-        resRhs <- c(resRhs, 0)
+        lhs[firstBinaryVariableIndex + (i - 1) * nrClasses + h - 1] <- RORUTADIS_BIGM
+        
+        model$constraints <- combineConstraints(model$constraints,
+                                                list(lhs = lhs, dir = "<=", rhs = RORUTADIS_BIGM + rhs))
       }
     }
-    else {
-      # monotonous of characteristic points
-      
-      lhs <- array(0, dim = nrOutputVars)
-      
-      if (criteria[i] == 'g') {
-        lhs[firstCharacteristicPointIndex] <- 1
-      }
-      else {
-        lhs[firstCharacteristicPointIndex + linearSegments[i] - 1] <- 1
-      }
-      
-      if (strictVF == TRUE) {
-        lhs[epsilonIndex] <- -1
-      }
-      
-      resDir <- c(resDir, ">=")
-      resLhs <- rbind(resLhs, lhs)
-      resRhs <- c(resRhs, 0)
-      
-      if (linearSegments[i] > 1) {
-        for (k in 0:(linearSegments[i]-2)) {
-          lhs <- array(0, dim = nrOutputVars)
-          lhs[firstCharacteristicPointIndex + k] <- 1
-          lhs[firstCharacteristicPointIndex + k + 1] <- -1
-          if (criteria[i] == 'g') {
-            if (strictVF == TRUE) {
-              lhs[epsilonIndex] <- 1
-            }
-            resDir <- c(resDir, "<=")
-          }
-          else {
-            if (strictVF == TRUE) {
-              lhs[epsilonIndex] <- -1
-            }
-            resDir <- c(resDir, ">=")
-          }
-          resLhs <- rbind(resLhs, lhs)
-          resRhs <- c(resRhs, 0)
-        }
-      }
-      
-      maximum <- max(perf[, i])
-      minimum <- min(perf[, i])
-      
-      if (criteria[i] == 'g') {
-        for (j in seq_len(length(levels[[i]]) - 1)) {
-          index <- offsets[i] + j
-          
-          x <- getEvaluation(perf, altVars, i, index)
-          
-          for (k in seq_len(linearSegments[i])) {
-            segmentUpperBound <- minimum + (((maximum - minimum) * k) / linearSegments[i])
-            
-            if (x > segmentUpperBound && k == linearSegments[i]) {
-              segmentUpperBound <- maximum
-            }
-            
-            if (x <= segmentUpperBound) {
-              segmentLowerBound <- minimum
-              
-              if (k > 1) {
-                segmentLowerBound <- minimum + (((maximum - minimum) * (k - 1)) / linearSegments[i])
-              }
-              
-              lhs <- array(0, dim = nrOutputVars)
-              lhs[index] <- -1
-              lhs[firstCharacteristicPointIndex + k - 1] <- ((x - segmentLowerBound) / (segmentUpperBound - segmentLowerBound))
-              
-              if (k > 1) {
-                lhs[firstCharacteristicPointIndex + k - 2] <- ((segmentLowerBound - x) / (segmentUpperBound - segmentLowerBound)) + 1
-              }
-              
-              resLhs <- rbind(resLhs, lhs)
-              resDir <- c(resDir, "==")
-              resRhs <- c(resRhs, 0)
-              
-              break
-            }
-          }
-        }
-      }
-      else {
-        for (j in seq_len(length(levels[[i]]) - 1)) {
-          index <- offsets[i] + j - 1
-          
-          x <- getEvaluation(perf, altVars, i, index)
-          
-          for (k in seq_len(linearSegments[i])) {
-            segmentUpperBound <- minimum + (((maximum - minimum) * k) / linearSegments[i])
-            
-            if (x > segmentUpperBound && k == linearSegments[i]) {
-              segmentUpperBound <- maximum
-            }
-            
-            if (x <= segmentUpperBound) {
-              segmentLowerBound <- minimum
-              
-              if (k > 1) {
-                segmentLowerBound <- minimum + (((maximum - minimum) * (k - 1)) / linearSegments[i])
-              }
-              
-              lhs <- array(0, dim = nrOutputVars)
-              lhs[index] <- -1
-              lhs[firstCharacteristicPointIndex + k - 1] <- ((segmentUpperBound - x) / (segmentUpperBound - segmentLowerBound))
-              
-              if (k < linearSegments[i]) {
-                lhs[firstCharacteristicPointIndex + k] <- ((x - segmentUpperBound) / (segmentUpperBound - segmentLowerBound)) + 1
-              }
-              
-              resLhs <- rbind(resLhs, lhs)
-              resDir <- c(resDir, "==")
-              resRhs <- c(resRhs, 0)
-              
-              break
-            }
-          }
-        }
-      }
-      
-      firstCharacteristicPointIndex <- firstCharacteristicPointIndex + linearSegments[i]
-    }
-  }
-  
-  return (list(lhs = resLhs, dir = resDir, rhs = resRhs))
-}
-
-###### THRESHOLDS
-
-buildFirstThresholdGraterThen0Constraint <- function(nrVars, firstThresholdIndex, epsilonIndex) {
-  lhs <- rep(0, nrVars)
-  lhs[firstThresholdIndex] <- 1
-  lhs[epsilonIndex] <- -1
-  
-  return (list(lhs = lhs, dir = ">=", rhs = 0))
-}
-
-buildLastThresholdLessThen1Constraint <- function(nrVars, firstThresholdIndex,
-                                                  lastThresholdIndex, epsilonIndex) {
-  lhs <- rep(0, nrVars)
-  lhs[lastThresholdIndex] <- 1
-  lhs[epsilonIndex] <- 1
-  
-  return (list(lhs = lhs, dir = "<=", rhs = 1))
-}
-
-buildMonotonousThresholdsConstraints <- function(nrVars, firstThresholdIndex,
-                                                 lastThresholdIndex, epsilonIndex) {
-  res <- c()
-  
-  for (i in seq_len(lastThresholdIndex - firstThresholdIndex)) {
-    h <- firstThresholdIndex + i
-    lhs <- rep(0, nrVars)
-    lhs[h] <- 1
-    lhs[h - 1] <- -1
-    lhs[epsilonIndex] <- -1
-    res <- rbind(res, lhs)
-  }
-  
-  if (is.null(res))
-    return (NULL)
-  else
-    return (list(lhs = res, dir = rep(">=", nrow(res)), rhs = rep(0, nrow(res))))
-}
-
-###### ASSIGNEMNT EXAMPLES
-
-buildLBAssignmentsConstraint <- function(alternative, atLeastClass, altVars,
-                                         firstThresholdIndex, lastThresholdIndex) {
-  if (atLeastClass <= 1 || atLeastClass > lastThresholdIndex - firstThresholdIndex + 2)
-    return (NULL)
-  
-  lhs <- altVars[alternative, ]
-  lhs[firstThresholdIndex + atLeastClass - 2] <- -1
-  
-  return (list(lhs = lhs, dir = ">=", rhs = 0))
-}
-
-buildUBAssignmentsConstraint <- function(alternative,
-                                         atMostClass,
-                                         altVars,
-                                         firstThresholdIndex,
-                                         lastThresholdIndex,
-                                         epsilonIndex) {
-  if (atMostClass < 1 || atMostClass >= lastThresholdIndex - firstThresholdIndex + 2)
-    return (NULL)
-  
-  lhs <- altVars[alternative, ]
-  lhs[epsilonIndex] <- 1
-  lhs[firstThresholdIndex + atMostClass - 1] <- -1
-  
-  return (list(lhs = lhs, dir = "<=", rhs = 0))
-}
-
-###### PAIRWISE COMPARISIONS
-
-buildassignmentPairwiseAtLeastComparisonsConstraints <- function(alternativeA,
-                                                                 alternativeB,
-                                                                 k,
-                                                                 altVars,
-                                                                 firstThresholdIndex,
-                                                                 lastThresholdIndex,
-                                                                 firstBinaryVarIndex,
-                                                                 epsilonIndex) {
-  lhsData <- c()
-  dirData <- c()
-  rhsData <- c()
-  
-  sumLhs <- rep(0, ncol(altVars))
-  
-  for (i in 0:(lastThresholdIndex - firstThresholdIndex - k + 1)) {
-    ta <- firstThresholdIndex + i + k - 1
-    tb <- firstThresholdIndex + i
-    if (ta >= firstThresholdIndex) {
-      lhs <- altVars[alternativeA, ]
-      lhs[ta] <- -1
-      lhs[firstBinaryVarIndex + i] <- RORUTADIS_BIGM
-      lhsData <- rbind(lhsData, lhs)
-      dirData <- c(dirData, ">=")
-      rhsData <- c(rhsData, 0)
-    }
     
-    if (tb <= lastThresholdIndex) {
-      lhs <- altVars[alternativeB, ]
-      lhs[epsilonIndex] <- 1
-      lhs[tb] <- -1
-      lhs[firstBinaryVarIndex + i] <- -RORUTADIS_BIGM
-      lhsData <- rbind(lhsData, lhs)
-      dirData <- c(dirData, "<=")
-      rhsData <- c(rhsData, 0)
-    }
+    lhs <- rep(0, nrVariables)
+    lhs[(firstBinaryVariableIndex + (i - 1) * nrClasses):(firstBinaryVariableIndex + i * nrClasses - 1)] <- 1
     
-    sumLhs[firstBinaryVarIndex + i] <- 1
+    model$constraints <- combineConstraints(model$constraints,
+                                            list(lhs = lhs, dir = "==", rhs = 1))
   }
   
-  lhsData <- rbind(lhsData, sumLhs)
-  dirData <- c(dirData, "<=")
-  rhsData <- c(rhsData, lastThresholdIndex - firstThresholdIndex - k + 1)
-  
-  return (list(lhs = lhsData, dir = dirData, rhs = rhsData))
+  return (model)
 }
-
-buildassignmentPairwiseAtMostComparisonsConstraints <- function(alternativeA,
-                                                                alternativeB,
-                                                                l,
-                                                                altVars,
-                                                                firstThresholdIndex,
-                                                                lastThresholdIndex,
-                                                                firstBinaryVarIndex,
-                                                                epsilonIndex) {
-  lhsData <- c()
-  dirData <- c()
-  rhsData <- c()
-  
-  sumLhs <- rep(0, ncol(altVars))
-  
-  for (i in 0:(lastThresholdIndex - firstThresholdIndex - l + 1)) {
-    ta <- firstThresholdIndex + i + l
-    tb <- firstThresholdIndex + i - 1
-    if (ta <= lastThresholdIndex) {
-      lhs <- altVars[alternativeA, ]
-      lhs[epsilonIndex] <- 1
-      lhs[ta] <- -1
-      lhs[firstBinaryVarIndex + i] <- -RORUTADIS_BIGM
-      lhsData <- rbind(lhsData, lhs)
-      dirData <- c(dirData, "<=")
-      rhsData <- c(rhsData, 0)
-    }
-    
-    if (tb >= firstThresholdIndex) {
-      lhs <- altVars[alternativeB, ]
-      lhs[tb] <- -1
-      lhs[firstBinaryVarIndex + i] <- RORUTADIS_BIGM
-      lhsData <- rbind(lhsData, lhs)
-      dirData <- c(dirData, ">=")
-      rhsData <- c(rhsData, 0)
-    }
-    
-    sumLhs[firstBinaryVarIndex + i] <- 1
-  }
-  
-  lhsData <- rbind(lhsData, sumLhs)
-  dirData <- c(dirData, "<=")
-  rhsData <- c(rhsData, lastThresholdIndex - firstThresholdIndex - l + 1)
-  
-  return (list(lhs = lhsData, dir = dirData, rhs = rhsData))
-}
-
-###### DESIRED CLASS CARDINALITIES
-
-buildClassCardinalitiesHelperConstraints <- function(alternative,
-                                                     altVars,
-                                                     firstThresholdIndex,
-                                                     lastThresholdIndex,
-                                                     firstBinaryVarForThisAlternativeIndex,
-                                                     epsilonIndex) {  
-  lhsData <- c()
-  dirData <- c()
-  rhsData <- c()
-  
-  sumLhs <- rep(0, ncol(altVars))
-  
-  for (i in 0:(lastThresholdIndex - firstThresholdIndex + 1)) {
-    th_1 <- firstThresholdIndex + i - 1
-    th <- firstThresholdIndex + i
-    
-    if (th_1 >= firstThresholdIndex) {
-      lhs <- altVars[alternative, ]
-      lhs[th_1] <- -1
-      lhs[firstBinaryVarForThisAlternativeIndex + i] <- -RORUTADIS_BIGM
-      lhsData <- rbind(lhsData, lhs)
-      dirData <- c(dirData, ">=")
-      rhsData <- c(rhsData,-RORUTADIS_BIGM)
-    }
-    
-    if (th <= lastThresholdIndex) {
-      lhs <- altVars[alternative, ]
-      lhs[th] <- -1
-      lhs[epsilonIndex] <- 1
-      lhs[firstBinaryVarForThisAlternativeIndex + i] <- RORUTADIS_BIGM
-      lhsData <- rbind(lhsData, lhs)
-      dirData <- c(dirData, "<=")
-      rhsData <- c(rhsData, RORUTADIS_BIGM)
-    }
-    
-    sumLhs[firstBinaryVarForThisAlternativeIndex + i] <- 1
-  }
-  
-  lhsData <- rbind(lhsData, sumLhs)
-  dirData <- c(dirData, "==")
-  rhsData <- c(rhsData, 1)
-  
-  return (list(lhs = lhsData, dir = dirData, rhs = rhsData))
-}
-
-buildClassCardinalitieLBConstraint <- function(class,
-                                               min,
-                                               nrAlternatives,
-                                               nrClasses,
-                                               firstIndex) {
-  lhs <- rep(0, firstIndex + nrAlternatives * nrClasses - 1)
-  for (i in seq(firstIndex + class - 1,
-                firstIndex + nrAlternatives * nrClasses - 1, by = nrClasses)) {
-    lhs[i] <- 1
-  }
-  
-  return (list(lhs = lhs, dir = ">=", rhs = min))
-}
-
-buildClassCardinalitieUBConstraint <- function(class,
-                                               max,
-                                               nrAlternatives,
-                                               nrClasses,
-                                               firstIndex) {
-  lhs <- rep(0, firstIndex + nrAlternatives * nrClasses - 1)
-  
-  for (i in seq(firstIndex + class - 1,
-                firstIndex + nrAlternatives * nrClasses - 1, by = nrClasses)) {
-    lhs[i] <- 1
-  }
-  
-  return (list(lhs = lhs, dir = "<=", rhs = max))
-}
-###### ADDING CONSTRAINT TO MODEL FOR IMPROVEMENT AND DETERIORATION ASSIGNMENT
-
-addAlternativeThresholdComparisionConstraint <- function(alternative,
-                                                         threshold,
-                                                         model,
-                                                         altVars,
-                                                         necessary,
-                                                         firstThresholdIndex,
-                                                         lastThresholdIndex,
-                                                         uxIndex = NULL) {
-  if (threshold < 1 || threshold > lastThresholdIndex - firstThresholdIndex + 1)
-    return (model)
-  
-  lhs <- altVars[alternative, ]  
-  lhs <- c(lhs, rep(0, ncol(model$lhs) - ncol(altVars)))
-  lhs[firstThresholdIndex + threshold - 1] <- -1
-  
-  dir <- NULL
-  if (necessary) dir <- "<="
-  else dir <- ">="
-  
-  if (!is.null(uxIndex)) {
-    lhs[uxIndex] <- 1
-    lhs[uxIndex + 1] <- -1
-  }
-  
-  return (combineConstraints(model, list(lhs = lhs, dir = dir, rhs = 0)))
-}
-
-###### REPRESENTATIVE FUNCTION - CONSTRAINTS
-
-buildUtilityDifferenceConstraint <- function(alternativeA, alternativeB,
-                                             altVars, nrVariables) {
-  result <- altVars[alternativeA, ]
-  
-  for (k in 1:length(altVars[alternativeB, ]))
-    result[k] <- result[k] - altVars[alternativeB, k]
-  
-  return (c(result, rep(0, nrVariables - ncol(altVars))))
-}
-
-buildUtilityMultipleDifferenceConstraint <- function(alternativeA, alternativeB,
-                                                     alternativeC, alternativeD,
-                                                     altVars, nrVariables) {
-  result <- altVars[alternativeA, ]
-  
-  for (k in 1:length(altVars[alternativeB, ])) {
-    result[k] <- result[k] - altVars[alternativeB, k] +
-      altVars[alternativeC, k] - altVars[alternativeD, k]
-  }
-  
-  return (c(result, rep(0, nrVariables - ncol(altVars))))
-}
-
-###### CONSTRAINTS HELPERS
 
 combineConstraints <- function(...) {
   allConst <- list(...)
@@ -659,224 +122,454 @@ removeConstraints <- function(allConst, constraintsToRemoveIndices) {
 
 #### BUILDING MODEL
 
-buildBaseModel <- function(problem,
-                           isEpsilonStrictyPositive = FALSE,
-                           instedOfModelReturnIndices = FALSE) {
-  altVars <- buildAltVariableMatrix(problem$perf)
-  epsilonIndex <- ncol(altVars)
+buildModel <- function(problem, includeEpsilonAsVariable) {  
   nrAlternatives <- nrow(problem$perf)
+  nrCriteria <- ncol(problem$perf)
   
-  firstLevelZeroConstraints <- buildFirstLevelZeroConstraints(problem$perf, problem$criteria)
-  bestLevelToUnityConstraint <- buildBestLevelsAddToUnityConstraint(problem$perf, problem$criteria)
-  epsilonStrictlyPositive <- NULL
+  # criterion value to alternative indices
   
-  if (isEpsilonStrictyPositive)
-    epsilonStrictlyPositive <- buildEpsilonStrictlyPositiveConstraint(ncol(altVars), epsilonIndex)
+  criterionValues <- replicate(nrCriteria, list())
   
-  allConst <- combineConstraints(firstLevelZeroConstraints,
-                                 bestLevelToUnityConstraint,
-                                 epsilonStrictlyPositive)
+  for (j in seq_len(nrCriteria)) {
+    for (i in seq_len(nrAlternatives)) {
+      value <- problem$perf[i, j]
+      
+      found <- FALSE
+      
+      for (k in seq_len(length(criterionValues[[j]]))) {
+        if (criterionValues[[j]][[k]]$value == value) { # todo: consider epsilon
+          found <- TRUE
+          criterionValues[[j]][[k]]$alternatives <- c(criterionValues[[j]][[k]]$alternatives, i)
+        }
+      }
+      
+      if (!found) {
+        criterionValues[[j]][[length(criterionValues[[j]]) + 1]] <- list(
+          value=value,
+          alternatives=c(i)
+        )
+      }
+    }
+    
+    if (length(criterionValues[[j]]) < 2) {
+      stop(paste("Criterion ", j, " is superfluous!"))
+    }
+    
+    # sort criterion values
+    criterionValues[[j]] <- criterionValues[[j]][order(
+      sapply(criterionValues[[j]],
+             function(x) x$value, simplify=TRUE
+             ), decreasing=FALSE)]
+  }
   
-  monotonousAndCharPointsConstraints <- buildMonotonousAndCharacteristicPointsConstraints(problem$perf,
-                                                                                          problem$criteria,
-                                                                                          problem$characteristicPoints,
-                                                                                          problem$strictVF)
+  perfToModelVariables <- replicate(nrCriteria, replicate(nrAlternatives, list()))
+  firstChPointVariableIndex <- c(1)
+  chPoints <- c()
   
-  variablesNumberDiff <- ncol(monotonousAndCharPointsConstraints$lhs) - ncol(allConst$lhs)
-  if (variablesNumberDiff > 0) {
-    for (i in 1:variablesNumberDiff) {
-      allConst$lhs <- cbind(allConst$lhs, 0)
-      altVars <- cbind(altVars, 0)
+  for (j in seq_len(nrCriteria)) {
+    numberOfCharacteristicPoints <- problem$characteristicPoints[j]
+    
+    if (numberOfCharacteristicPoints == 0) {
+      numberOfCharacteristicPoints <- length(criterionValues[[j]])
+    }
+    
+    if (j != nrCriteria) {
+      firstChPointVariableIndex[j + 1] <- firstChPointVariableIndex[j] + numberOfCharacteristicPoints - 1
+    }
+    
+    chPoints[j] <- numberOfCharacteristicPoints
+  }
+  
+  numberOfVariables <- firstChPointVariableIndex[length(firstChPointVariableIndex)] + chPoints[nrCriteria] - 2
+  
+  for (j in seq_len(nrCriteria)) {
+    firstValue <- criterionValues[[j]][[1]]$value
+    lastValue <- criterionValues[[j]][[length(criterionValues[[j]])]]$value
+    direction <- problem$criteria[j]
+    
+    if (problem$characteristicPoints[j] == 0) {      
+      for (i in seq_len(nrAlternatives)) {
+        value <- problem$perf[i, j]
+        criterionValueIndex <- which(sapply(criterionValues[[j]], function(x){x$value == value}))
+        
+        if (direction == "g" && criterionValueIndex > 1) {
+          perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j] + criterionValueIndex - 2, 1.0)
+        } else if (direction == "c" && criterionValueIndex < length(criterionValues[[j]])) {
+          perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j] + criterionValueIndex - 1, 1.0)
+        }
+      }
+    } else {
+      numberOfCharacteristicPoints <- problem$characteristicPoints[j]
+      intervalLength <- (lastValue - firstValue) / (numberOfCharacteristicPoints - 1);
+      coeff <- 1.0 / intervalLength;
+      
+      for (i in seq_len(nrAlternatives)) {
+        value <- problem$perf[i, j]
+        
+        if (direction == "g") {
+          if (value == lastValue) {
+            perfToModelVariables[[i, j]][[1]] <- c(firstChPointVariableIndex[j] + numberOfCharacteristicPoints - 2, 1.0)
+          } else if (value > firstValue) {
+            lowerChPointIndex <- floor((value - firstValue) * coeff)
+            
+            if (lowerChPointIndex >= numberOfCharacteristicPoints - 1) {
+              stop("InternalError?: lowerChPointIndex >= numberOfCharacteristicPoints - 1: This should never happen.");
+            }
+            
+            lowerValue = firstValue + intervalLength * lowerChPointIndex
+            upperValue = firstValue + intervalLength * (lowerChPointIndex + 1)
+            
+            lowerCoeff <- 0.0
+            upperCoeff <- 0.0
+            
+            if (value <= lowerValue) {
+              # comp accuracy
+              lowerCoeff = 1.0
+              upperCoeff = 0.0
+            } else if (value >= upperValue) {
+              # comp accuracy
+              lowerCoeff = 0.0
+              upperCoeff = 1.0
+            } else {
+              lowerCoeff = (lowerValue - value) / (upperValue - lowerValue) + 1.0
+              upperCoeff = (value - lowerValue) / (upperValue - lowerValue)
+            }
+            
+            if (lowerChPointIndex > 0) {
+              perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j] + lowerChPointIndex - 1, lowerCoeff)
+              perfToModelVariables[[i, j]][[2]] = c(firstChPointVariableIndex[j] + lowerChPointIndex, upperCoeff)
+            } else {
+              perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j] + lowerChPointIndex, upperCoeff)
+            }
+          }
+        } else {
+          if (value == firstValue) {
+            perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j], 1.0)
+          } else if (value < lastValue) {
+            lowerChPointIndex <- floor((value - firstValue) * coeff)
+            
+            if (lowerChPointIndex >= numberOfCharacteristicPoints - 1) {
+              stop("InternalError?: lowerChPointIndex >= numberOfCharacteristicPoints - 1: This should never happen.");
+            }
+            
+            lowerValue = firstValue + intervalLength * lowerChPointIndex
+            upperValue = firstValue + intervalLength * (lowerChPointIndex + 1)
+            
+            lowerCoeff <- 0.0
+            upperCoeff <- 0.0
+            
+            if (value <= lowerValue) {
+              # comp accuracy
+              lowerCoeff = 1.0
+              upperCoeff = 0.0
+            } else if (value >= upperValue) {
+              # comp accuracy
+              lowerCoeff = 0.0
+              upperCoeff = 1.0
+            } else {
+              lowerCoeff = (upperValue - value) / (upperValue - lowerValue)
+              upperCoeff = (value - upperValue) / (upperValue - lowerValue) + 1.0
+            }
+            
+            if (lowerChPointIndex < numberOfCharacteristicPoints - 2) {
+              perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j] + lowerChPointIndex, lowerCoeff)
+              perfToModelVariables[[i, j]][[2]] = c(firstChPointVariableIndex[j] + lowerChPointIndex + 1, upperCoeff)
+            } else {
+              perfToModelVariables[[i, j]][[1]] = c(firstChPointVariableIndex[j] + lowerChPointIndex, lowerCoeff)
+            }
+          }
+        }
+      }
     }
   }
   
-  allConst <- combineConstraints(monotonousAndCharPointsConstraints, allConst)
+  # epsilon index
   
-  firstThresholdIndex <- ncol(altVars) + 1
-  
-  for (i in 1:(problem$nrClasses - 1)) {
-    allConst$lhs <- cbind(allConst$lhs, 0)
-    altVars <- cbind(altVars, 0)
+  epsilonIndex <- NULL
+  if (includeEpsilonAsVariable) {
+    numberOfVariables <- numberOfVariables + 1
+    epsilonIndex <- numberOfVariables
   }
   
-  actualNrVars <- ncol(altVars)
-  lastThresholdIndex <- actualNrVars
+  # threshold indices
   
-  firstThresholdGT0Constraint <- buildFirstThresholdGraterThen0Constraint(actualNrVars,
-                                                                          firstThresholdIndex,
-                                                                          epsilonIndex)
-  monotonousThresholdsConstraint <- buildMonotonousThresholdsConstraints(actualNrVars,
-                                                                         firstThresholdIndex,
-                                                                         lastThresholdIndex,
-                                                                         epsilonIndex)
-  lastThresholdLT1Constraint <- buildLastThresholdLessThen1Constraint(actualNrVars,
-                                                                      firstThresholdIndex,
-                                                                      lastThresholdIndex,
-                                                                      epsilonIndex)
+  firstThresholdIndex <- numberOfVariables + 1  
+  numberOfVariables <- numberOfVariables + problem$nrClasses - 1
   
-  allConst <- combineConstraints(allConst,
-                                 firstThresholdGT0Constraint,
-                                 monotonousThresholdsConstraint,
-                                 lastThresholdLT1Constraint)
+  # constraints
   
-  allConst$types <- rep("C", ncol(allConst$lhs))
+  # sum to 1
   
-  resrtictionsIndices <- c()
+  lhs <- rep(0, numberOfVariables)
   
-  # Constraints: assignemnts
+  for (j in seq_len(nrCriteria)) {
+    if (problem$criteria[j] == 'g')
+      lhs[firstChPointVariableIndex[j] + chPoints[j] - 2] <- 1
+    else
+      lhs[firstChPointVariableIndex[j]] <- 1
+  }
+  
+  constraints <- list(lhs = lhs, dir = "==", rhs = 1)
+  
+  # monotonocity of vf
+  
+  for (j in seq_len(nrCriteria)) {
+    for (k in seq_len(chPoints[j] - 2)) {
+      lhs <- rep(0, numberOfVariables)
+      rhs <- 0
+      
+      if (problem$criteria[j] == "g") {
+        lhs[firstChPointVariableIndex[j] + k - 1] <- 1
+        lhs[firstChPointVariableIndex[j] + k] <- -1
+      } else {
+        lhs[firstChPointVariableIndex[j] + k - 1] <- -1
+        lhs[firstChPointVariableIndex[j] + k] <- 1
+      }
+      
+      if (problem$strictVF) {
+        if (includeEpsilonAsVariable) {
+          lhs[epsilonIndex] <- 1
+        } else {
+          rhs <- -RORUTADIS_MINEPS
+        }
+      }
+      
+      constraints <- combineConstraints(constraints,
+                                        list(lhs = lhs, dir = "<=", rhs = rhs))
+    }
+    
+    lhs <- rep(0, numberOfVariables)
+    rhs <- 0
+    
+    if (problem$criteria[j] == 'g')
+      lhs[firstChPointVariableIndex[j] + chPoints[j] - 2] <- -1
+    else
+      lhs[firstChPointVariableIndex[j]] <- -1
+    
+    if (problem$strictVF) {
+      if (includeEpsilonAsVariable) {
+        lhs[epsilonIndex] <- 1
+      } else {
+        rhs <- -RORUTADIS_MINEPS
+      }
+    }
+    
+    constraints <- combineConstraints(constraints,
+                                      list(lhs = lhs, dir = "<=", rhs = rhs))
+  }
+  
+  # first threshold over 0
+  
+  lhs <- rep(0, numberOfVariables)
+  rhs <- 0
+  
+  lhs[firstThresholdIndex] <- -1
+  
+  if (includeEpsilonAsVariable) {
+    lhs[epsilonIndex] <- 1
+  } else {
+    rhs <- -RORUTADIS_MINEPS
+  }
+  
+  constraints <- combineConstraints(constraints,
+                                    list(lhs = lhs, dir = "<=", rhs = rhs))
+  
+  # last threshold under 1
+  
+  lhs <- rep(0, numberOfVariables)
+  rhs <- 1
+  
+  lhs[firstThresholdIndex + problem$nrClasses - 2] <- 1
+  
+  if (includeEpsilonAsVariable) {
+    lhs[epsilonIndex] <- 1
+  } else {
+    rhs <- 1 - RORUTADIS_MINEPS
+  }
+  
+  constraints <- combineConstraints(constraints,
+                                    list(lhs = lhs, dir = "<=", rhs = rhs))
+  
+  for (k in seq_len(problem$nrClasses - 2)) {
+    lhs <- rep(0, numberOfVariables)
+    rhs <- 0
+    
+    lhs[firstThresholdIndex + k - 1] <- 1
+    lhs[firstThresholdIndex + k] <- -1
+    
+    if (includeEpsilonAsVariable) {
+      lhs[epsilonIndex] <- 1
+    } else {
+      rhs <- -RORUTADIS_MINEPS
+    }
+    
+    constraints <- combineConstraints(constraints,
+                                      list(lhs = lhs, dir = "<=", rhs = rhs))
+  }
+  
+  constraints$types <- rep("C", numberOfVariables)
+  
+  # building model
+  
+  model <- list(
+    constraints = constraints,
+    firstChPointVariableIndex = firstChPointVariableIndex,
+    epsilonIndex = epsilonIndex,
+    firstThresholdIndex = firstThresholdIndex,
+    chPoints = chPoints,
+    perfToModelVariables = perfToModelVariables,
+    criterionValues = criterionValues,
+    criterionPreferenceDirection = problem$criteria,
+    prefInfoToConstraints = list(),
+    nrClasses = problem$nrClasses,
+    generalVF = problem$characteristicPoints == 0
+  )
+  
+  # preference information
+  
+  # assignment examples
+  
+  prefInfoIndex <- 1
   
   if (is.matrix(problem$assignmentsLB)) {
-    for (i in seq_len(nrow(problem$assignmentsLB))) {
-      assignmentConst <- buildLBAssignmentsConstraint(problem$assignmentsLB[i, 1],
-                                                      problem$assignmentsLB[i, 2],
-                                                      altVars,
-                                                      firstThresholdIndex,
-                                                      lastThresholdIndex)
-      allConst <- combineConstraints(allConst, assignmentConst)
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs), nrow(allConst$lhs))
+    for (k in seq_len(nrow(problem$assignmentsLB))) {
+      alternative <- problem$assignmentsLB[k, 1]
+      atLeastToClass <- problem$assignmentsLB[k, 2]
+            
+      model$constraints <- combineConstraints(model$constraints,
+                                              buildLBAssignmentsConstraint(alternative, atLeastToClass, model))
+      
+      model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+      prefInfoIndex <- prefInfoIndex + 1
     }
   }
-  
+
   if (is.matrix(problem$assignmentsUB)) {
-    for (i in seq_len(nrow(problem$assignmentsUB))) {
-      assignmentConst <- buildUBAssignmentsConstraint(problem$assignmentsUB[i, 1],
-                                                      problem$assignmentsUB[i, 2],
-                                                      altVars,
-                                                      firstThresholdIndex,
-                                                      lastThresholdIndex,
-                                                      epsilonIndex)
-      allConst <- combineConstraints(allConst, assignmentConst)
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs), nrow(allConst$lhs))
+    for (k in seq_len(nrow(problem$assignmentsUB))) {
+      alternative <- problem$assignmentsUB[k, 1]
+      atMostToClass <- problem$assignmentsUB[k, 2]
+      
+      model$constraints <- combineConstraints(model$constraints,
+                                              buildUBAssignmentsConstraint(alternative, atMostToClass, model))
+      
+      model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+      prefInfoIndex <- prefInfoIndex + 1
     }
-  }
+  }  
   
-  # Constraints: pairwise comparisions
-  
-  if (is.matrix(problem$assignmentPairwiseAtLeastComparisons)) {
-    for (i in seq_len(nrow(problem$assignmentPairwiseAtLeastComparisons))) {
-      firstBinaryVarIndex <- ncol(allConst$lhs) + 1
-      for (x in 1:(problem$nrClasses - problem$assignmentPairwiseAtLeastComparisons[i, 3])) {
-        allConst$lhs <- cbind(allConst$lhs, 0)
-        altVars <- cbind(altVars, 0)
-        allConst$types <- c(allConst$types, "B")
+  if ((is.matrix(problem$assignmentPairwiseAtLeastComparisons) && nrow(problem$assignmentPairwiseAtLeastComparisons) > 0) ||
+        (is.matrix(problem$assignmentPairwiseAtMostComparisons) && nrow(problem$assignmentPairwiseAtMostComparisons) > 0) ||
+        (is.matrix(problem$minimalClassCardinalities) && nrow(problem$minimalClassCardinalities) > 0) ||
+        (is.matrix(problem$maximalClassCardinalities) && nrow(problem$maximalClassCardinalities) > 0)) {
+    model <- extendModelWithAssignmentVariables(model)
+    firstAssignmentVariableIndex <- model$firstThresholdIndex + model$nrClasses - 1
+    numberOfVariables <- ncol(model$constraints$lhs)
+    
+    # assignment-based pairwise comparisons
+    
+    if (is.matrix(problem$assignmentPairwiseAtLeastComparisons)) {
+      for (k in seq_len(nrow(problem$assignmentPairwiseAtLeastComparisons))) {
+        # alternative atLeastToClassBetterThanClassOf refAlternative by d classes
+        
+        alternative <- problem$assignmentPairwiseAtLeastComparisons[k, 1]
+        refAlternative <- problem$assignmentPairwiseAtLeastComparisons[k, 2]
+        d <- problem$assignmentPairwiseAtLeastComparisons[k, 3]
+        
+        stopifnot(d >= 0 && d < model$nrClasses)
+        
+        prefInfoStartIndex <- nrow(model$constraints$lhs) + 1
+        
+        for (m in seq_len(model$nrClasses - d)) {          
+          model$constraints <- combineConstraints(model$constraints,
+                                                  buildUBAssignmentsConstraint(refAlternative, m, model,
+                                                                               firstAssignmentVariableIndex +
+                                                                                 (alternative - 1) * model$nrClasses +
+                                                                                 m + d - 1))
+        }
+        
+        model$constraints <- combineConstraints(model$constraints,
+                                                buildLBAssignmentsConstraint(alternative, d + 1, model))
+        
+        model$prefInfoToConstraints[[prefInfoIndex]] <- prefInfoStartIndex:nrow(model$constraints$lhs)
+        prefInfoIndex <- prefInfoIndex + 1
       }
-      
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs) + 1)
-      assignmentConst <- buildassignmentPairwiseAtLeastComparisonsConstraints(problem$assignmentPairwiseAtLeastComparisons[i, 1],
-                                                                              problem$assignmentPairwiseAtLeastComparisons[i, 2],
-                                                                              problem$assignmentPairwiseAtLeastComparisons[i, 3],
-                                                                              altVars,
-                                                                              firstThresholdIndex,
-                                                                              lastThresholdIndex,
-                                                                              firstBinaryVarIndex,
-                                                                              epsilonIndex)
-      
-      allConst <- combineConstraints(allConst, assignmentConst)
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs))
     }
-  }
-  
-  if (is.matrix(problem$assignmentPairwiseAtMostComparisons)) {
-    for (i in seq_len(nrow(problem$assignmentPairwiseAtMostComparisons))) {
-      firstBinaryVarIndex <- ncol(allConst$lhs) + 1
-      for (x in 1:(problem$nrClasses - problem$assignmentPairwiseAtMostComparisons[i, 3])) {
-        allConst$lhs <- cbind(allConst$lhs, 0)
-        altVars <- cbind(altVars, 0)
-        allConst$types <- c(allConst$types, "B")
+    
+    if (is.matrix(problem$assignmentPairwiseAtMostComparisons)) {
+      for (k in seq_len(nrow(problem$assignmentPairwiseAtMostComparisons))) {
+        # alternative atMostToClassBetterThanClassOf refAlternative by d classes
+        
+        alternative <- problem$assignmentPairwiseAtMostComparisons[k, 1]
+        refAlternative <- problem$assignmentPairwiseAtMostComparisons[k, 2]
+        d <- problem$assignmentPairwiseAtMostComparisons[k, 3]
+        
+        stopifnot(d >= 0 && d < model$nrClasses)
+        
+        prefInfoStartIndex <- nrow(model$constraints$lhs) + 1
+        
+        for (m in seq_len(model$nrClasses - d - 1)) {          
+          model$constraints <- combineConstraints(model$constraints,
+                                                  buildLBAssignmentsConstraint(refAlternative, m + 1, model,
+                                                                               firstAssignmentVariableIndex +
+                                                                                 (alternative - 1) * model$nrClasses +
+                                                                                 m + d))
+        }
+        
+        model$prefInfoToConstraints[[prefInfoIndex]] <- prefInfoStartIndex:nrow(model$constraints$lhs)
+        prefInfoIndex <- prefInfoIndex + 1
       }
-      
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs) + 1)
-      assignmentConst <- buildassignmentPairwiseAtMostComparisonsConstraints(problem$assignmentPairwiseAtMostComparisons[i, 1],
-                                                                             problem$assignmentPairwiseAtMostComparisons[i, 2],
-                                                                             problem$assignmentPairwiseAtMostComparisons[i, 3],
-                                                                             altVars,
-                                                                             firstThresholdIndex,
-                                                                             lastThresholdIndex,
-                                                                             firstBinaryVarIndex,
-                                                                             epsilonIndex)
-      
-      allConst <- combineConstraints(allConst, assignmentConst)
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs))
-    }
-  }
-  
-  # Constraints: class cardinalities
-  
-  firstIndex <- ncol(allConst$lhs) + 1
-  
-  for (alternative in 1:nrAlternatives) {
-    firstBinaryVarIndex <- ncol(allConst$lhs) + 1
+    }    
     
-    for (x in 1:problem$nrClasses) {
-      allConst$lhs <- cbind(allConst$lhs, 0)
-      altVars <- cbind(altVars, 0)
-      allConst$types <- c(allConst$types, "B")
+    # desired class cardinalities
+    
+    if (is.matrix(problem$minimalClassCardinalities)) {
+      for (k in seq_len(nrow(problem$minimalClassCardinalities))) {
+        class <- problem$minimalClassCardinalities[k, 1]
+        cardinality <- problem$minimalClassCardinalities[k, 2]
+        
+        lhs <- rep(0, numberOfVariables)
+        lhs[seq(firstAssignmentVariableIndex + class - 1,
+                firstAssignmentVariableIndex + nrAlternatives * model$nrClasses - 1,
+                by = model$nrClasses)] <- 1
+        
+        
+        model$constraints <- combineConstraints(model$constraints, list(lhs = lhs, dir = ">=", rhs = cardinality))
+        
+        model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+        prefInfoIndex <- prefInfoIndex + 1
+      }
     }
     
-    assignmentConst <- buildClassCardinalitiesHelperConstraints(alternative,
-                                                                altVars,
-                                                                firstThresholdIndex,
-                                                                lastThresholdIndex,
-                                                                firstBinaryVarIndex,
-                                                                epsilonIndex)
-    
-    allConst <- combineConstraints(allConst, assignmentConst)
-  }
-  
-  
-  if (is.matrix(problem$minimalClassCardinalities)) {
-    for (i in seq_len(nrow(problem$minimalClassCardinalities))) {
-      assignmentConst <- buildClassCardinalitieLBConstraint(problem$minimalClassCardinalities[i, 1],
-                                                            problem$minimalClassCardinalities[i, 2],
-                                                            nrAlternatives,
-                                                            problem$nrClasses,
-                                                            firstIndex)
-      
-      allConst <- combineConstraints(allConst, assignmentConst)
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs), nrow(allConst$lhs))
+    if (is.matrix(problem$maximalClassCardinalities)) {
+      for (k in seq_len(nrow(problem$maximalClassCardinalities))) {
+        class <- problem$maximalClassCardinalities[k, 1]
+        cardinality <- problem$maximalClassCardinalities[k, 2]
+        
+        lhs <- rep(0, numberOfVariables)
+        lhs[seq(firstAssignmentVariableIndex + class - 1,
+                firstAssignmentVariableIndex + nrAlternatives * model$nrClasses - 1,
+                by = model$nrClasses)] <- 1
+        
+        
+        model$constraints <- combineConstraints(model$constraints, list(lhs = lhs, dir = "<=", rhs = cardinality))
+        
+        model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+        prefInfoIndex <- prefInfoIndex + 1
+      }
     }
   }
-  
-  if (is.matrix(problem$maximalClassCardinalities)) {
-    for (i in seq_len(nrow(problem$maximalClassCardinalities))) {
-      assignmentConst <- buildClassCardinalitieUBConstraint(problem$maximalClassCardinalities[i, 1],
-                                                            problem$maximalClassCardinalities[i, 2],
-                                                            nrAlternatives,
-                                                            problem$nrClasses,
-                                                            firstIndex)
-      
-      allConst <- combineConstraints(allConst, assignmentConst)
-      resrtictionsIndices <- c(resrtictionsIndices, nrow(allConst$lhs), nrow(allConst$lhs))
-    }
-  }
-  
-  if (instedOfModelReturnIndices)
-    return (resrtictionsIndices)
-  else
-    return (allConst)
+
+  return (model)
 }
 
-#### EXPLANATIONS HELPERS
-
-#' Remove constraints indices by restriction indices
-#' 
-#' This function allows to remove constraints indices from indices interval by restriction
-#' indices.
-#' @param constraintIntervalIndices Vector of interval indices of each restriction
-#' constraints. c(a_1, b_1, ..., a_n, b_n), where i-th of n restrictions is represented as
-#' model constraints at indices between a_i and b_i including a_i, b_i.
-#' @param restrictionToRemoveIndices Vector of indices of restrictions to remove.
-#' @return Vector of model constraints of restrictions which are NOT in restrictionToRemoveIndices.
-removeConstraintsByRestrictions <- function(constraintIntervalIndices, restrictionToRemoveIndices) {
-  res <- c()
-  nrRestrictions <- length(constraintIntervalIndices) / 2
+ua <- function(alternative, nrVariables, perfToModelVariables) {
+  res <- rep(0, nrVariables)
   
-  for (i in 1:nrRestrictions) {
-    if (!(i %in% restrictionToRemoveIndices)) {
-      res <- c(res, seq(constraintIntervalIndices[2 * i - 1], constraintIntervalIndices[2 * i]))
+  for (j in seq_len(ncol(perfToModelVariables))) {
+    for (k in seq_len(length(perfToModelVariables[[alternative, j]]))) {
+      res[perfToModelVariables[[alternative, j]][[k]][1]] <- perfToModelVariables[[alternative, j]][[k]][2]
     }
   }
   
   return (res)
 }
-

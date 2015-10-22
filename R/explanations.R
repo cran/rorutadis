@@ -1,4 +1,4 @@
-#### EXPLANATIONS HELPERS
+#### HELPERS
 
 isSuperset <- function(set, subset) {
   for (i in subset)
@@ -8,126 +8,6 @@ isSuperset <- function(set, subset) {
 }
 
 #### EXPLANATIONS
-
-explainAssignmentQuickly <- function(alternative, fromClass, toClass, problem,
-                              baseModel = NULL, restrictionIndices = NULL,
-                              altVars = NULL, epsilonIndex = NULL,
-                              firstThresholdIndex = NULL, lastThresholdIndex = NULL) {
-  stopifnot(fromClass >= 1)
-  stopifnot(toClass >= 1)
-  stopifnot(fromClass <= problem$nrClasses)
-  stopifnot(toClass <= problem$nrClasses)
-  
-  if (is.null(baseModel))
-    baseModel <- buildBaseModel(problem)
-  if (is.null(restrictionIndices))
-    restrictionIndices <- buildBaseModel(problem, FALSE, TRUE)
-  
-  if (is.null(epsilonIndex))
-    epsilonIndex <- getEpsilonIndex(problem)
-  
-  if (is.null(altVars)) {
-    altVars <- buildAltVariableMatrix(problem$perf)
-    for (i in 1:(ncol(baseModel$lhs) - epsilonIndex))
-      altVars <- cbind(altVars, 0)
-  }
-  
-  if (is.null(firstThresholdIndex))
-    firstThresholdIndex <- getFirstThresholdIndex(problem)
-  
-  if (is.null(lastThresholdIndex))
-    lastThresholdIndex <- getLastThresholdIndex(problem)
-  
-  addConst <- c()
-  allConst <- baseModel
-  
-  if (fromClass == 1 && toClass < problem$nrClasses) {
-    addConst <- buildLBAssignmentsConstraint(alternative,
-                                             toClass + 1,
-                                             altVars,
-                                             firstThresholdIndex,
-                                             lastThresholdIndex)
-    allConst <- combineConstraints(allConst, addConst)
-  }
-  else if (fromClass > 1 && toClass == problem$nrClasses) {
-    addConst <- buildUBAssignmentsConstraint(alternative,
-                                             fromClass - 1,
-                                             altVars,
-                                             firstThresholdIndex,
-                                             lastThresholdIndex,
-                                             epsilonIndex)
-    allConst <- combineConstraints(allConst, addConst)
-  }
-  else if (fromClass > 1 && toClass < problem$nrClasses) {
-    addConst1 <- buildLBAssignmentsConstraint(alternative,
-                                              toClass + 1,
-                                              altVars,
-                                              firstThresholdIndex,
-                                              lastThresholdIndex)
-    addConst2 <- buildUBAssignmentsConstraint(alternative,
-                                              fromClass - 1,
-                                              altVars,
-                                              firstThresholdIndex,
-                                              lastThresholdIndex,
-                                              epsilonIndex)
-    addConst3 <- list(lhs = rep(0, ncol(allConst$lhs)), dir = "==", rhs = 1)# this constraint is filled ~10 loc below
-    allConst <- combineConstraints(allConst, addConst1, addConst2, addConst3)
-    
-    allConst$lhs <- cbind(allConst$lhs, 0)
-    allConst$lhs <- cbind(allConst$lhs, 0)
-    allConst$types <- c(allConst$types, "B")
-    allConst$types <- c(allConst$types, "B")
-    
-    lhsdim <- dim(allConst$lhs)
-    allConst$lhs[lhsdim[1] - 2, lhsdim[2] - 1] <- RORUTADIS_BIGM
-    allConst$lhs[lhsdim[1] - 1, lhsdim[2]] <- -RORUTADIS_BIGM
-    allConst$lhs[lhsdim[1], lhsdim[2] - 1] <- 1
-    allConst$lhs[lhsdim[1], lhsdim[2]] <- 1
-  }
-  
-  nrRestrictions <- length(restrictionIndices) / 2
-  
-  if (nrRestrictions == 0) {
-    if (isModelConsistent(model, epsilonIndex))
-      return (list())
-    else
-      return (NULL)
-  }
-  
-  subsets <- lapply(1:nrRestrictions, function(x) combn(nrRestrictions, x))
-  
-  preferentialReducts <- list()
-  
-  constraintsToRemove <- removeConstraintsByRestrictions(restrictionIndices, c())
-  model <- removeConstraints(allConst, constraintsToRemove)
-  
-  if (!isModelConsistent(model, epsilonIndex))
-    return (NULL)
-
-  for (i in 1:length(subsets)) {
-    for (j in 1:ncol(subsets[[i]])) {
-      subset <- subsets[[i]][, j]
-      if (subset[1] > 0) {
-        constraintsToRemove <- removeConstraintsByRestrictions(restrictionIndices, subset)
-        if (!is.null(constraintsToRemove))
-          model <- removeConstraints(allConst, constraintsToRemove)
-        
-        if (!isModelConsistent(model, epsilonIndex)) {
-          preferentialReducts[[length(preferentialReducts) + 1]] <- subset
-          for (k in 1:length(subsets)) {
-            for (l in 1:ncol(subsets[[k]])) {
-              if (isSuperset(subsets[[k]][, l], subset)) {
-                subsets[[k]][1, l] <- 0
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  
-  return (preferentialReducts)
-}
 
 #' Explain assignment
 #'
@@ -140,17 +20,17 @@ explainAssignmentQuickly <- function(alternative, fromClass, toClass, problem,
 #' an assignment of \code{alternative} to class interval \code{[C_l, C_u]}
 #' (\code{l <= u}). 
 #' @param problem Problem for which computations will be performed.
-#' @return List of all preferential reducts for an assignment relation
-#' or \code{NULL} if an assignment is not influenced by restrictions.
-#' Each element of that list is a preferential reduct represented as a vector
+#' @return List of all preferential reducts for an assignment relation.
+#' If the assignment is not influenced by restrictions then empty list will be returned.
+#' Each element of the list is a preferential reduct represented as a vector
 #' of restriction indices. To identify preferential core use
 #' \code{\link{getPreferentialCore}}.
 #' To find out about restrictions by their indices use \code{\link{getRestrictions}}.
-#' If there was not possible to find explanations the function will return \code{NULL}.
 #' @seealso
 #' \code{\link{getPreferentialCore}}
 #' \code{\link{getRestrictions}}
 #' \code{\link{calculateAssignments}}
+#' @importFrom utils combn
 #' @examples
 #' perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.5), ncol = 2)
 #' problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
@@ -170,7 +50,92 @@ explainAssignment <- function(alternative, classInterval, problem) {
   stopifnot(is.vector(classInterval))
   stopifnot(length(classInterval) == 2)
   stopifnot(classInterval[1] <= classInterval[2])
-  return (explainAssignmentQuickly(alternative, classInterval[1], classInterval[2], problem))
+  
+  # it is not good to have classInterval as parameter
+  # but it was left for compatibility with older versions for now
+  # however, it is checked for corectness:
+  
+  model <- buildModel(problem, T)
+  assignments <- sapply(seq_len(problem$nrClasses), function(h) { checkRelation(model, alternative, h, F) })
+  assignmentInterval <- c(min(which(assignments)), max(which(assignments)))
+  stopifnot(assignmentInterval[1] == classInterval[1])
+  stopifnot(assignmentInterval[2] == classInterval[2])
+  stopifnot(all(assignments[assignmentInterval[1]:assignmentInterval[2]]))
+  
+  fromClass <- assignmentInterval[1]
+  toClass <- assignmentInterval[2]
+  
+  stopifnot(fromClass >= 1)
+  stopifnot(toClass >= 1)
+  stopifnot(fromClass <= problem$nrClasses)
+  stopifnot(toClass <= problem$nrClasses)
+  
+  if (!isModelConsistent(model)) {
+    stop("The problem is inconsistent.")
+  }
+  
+  if (fromClass == 1 && toClass < problem$nrClasses) {
+    model$constraints <- combineConstraints(model$constraints,
+                                            buildLBAssignmentsConstraint(alternative, toClass + 1, model))
+  } else if (fromClass > 1 && toClass == problem$nrClasses) {
+    model$constraints <- combineConstraints(model$constraints,
+                                            buildUBAssignmentsConstraint(alternative, fromClass - 1, model))
+  } else if (fromClass > 1 && toClass < problem$nrClasses) {
+    model$constraints <- addVarialbesToModel(model$constraints, c("B", "B"))
+    nrVariables <- ncol(model$constraints$lhs)
+    
+    constr1 <- buildLBAssignmentsConstraint(alternative, toClass + 1, model)
+    constr2 <- buildUBAssignmentsConstraint(alternative, fromClass - 1, model)
+    constrRel <- list(lhs = rep(0, nrVariables), dir = "==", rhs = 1)
+    
+    constr1$lhs[nrVariables - 1] <- RORUTADIS_BIGM
+    constr2$lhs[nrVariables] <- -RORUTADIS_BIGM
+    constrRel$lhs[nrVariables - 1] <- 1
+    constrRel$lhs[nrVariables] <- 1
+    
+    model$constraints <- combineConstraints(model$constraints, constr1, constr2, constrRel)
+  }
+  
+  nrPreferenceInformation <- length(model$prefInfoToConstraints)
+  preferentialReducts <- list()
+  
+  if (nrPreferenceInformation > 0) {
+    subsets <- lapply(seq_len(nrPreferenceInformation), function(x) combn(nrPreferenceInformation, x))
+    
+    newModel <- model
+    newModel$constraints <- removeConstraints(newModel$constraints, unlist(model$prefInfoToConstraints))
+    
+    if (!isModelConsistent(newModel)) {
+      return (list())
+    }
+    
+    for (i in 1:length(subsets)) {
+      for (j in 1:ncol(subsets[[i]])) {
+        subset <- subsets[[i]][, j]
+        if (subset[1] > 0) {
+          newModel <- model
+          
+          if (length(subset) != nrPreferenceInformation) {
+            newModel$constraints <- removeConstraints(newModel$constraints, unlist(model$prefInfoToConstraints[-subset]))
+          }
+          
+          if (!isModelConsistent(newModel)) {
+            preferentialReducts[[length(preferentialReducts) + 1]] <- subset
+            
+            for (k in 1:length(subsets)) {
+              for (l in 1:ncol(subsets[[k]])) {
+                if (isSuperset(subsets[[k]][, l], subset)) {
+                  subsets[[k]][1, l] <- 0
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  
+  return (preferentialReducts)
 }
 
 #' Identify preferential core

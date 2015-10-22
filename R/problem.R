@@ -767,7 +767,7 @@ removeMaximalClassCardinalities <- function(problem, ...) {
 
 #### GETTING RESTRICTIONS BY INDICES
 
-#' Get restrictions be indices for problem
+#' Get restrictions by indices
 #'
 #' This function gets restrictions by indices. 
 #'
@@ -858,10 +858,3 @@ getRestrictions <- function(problem, indices) {
   return (res)
 }
 
-
-#### HELPERS
-
-
-getNrLinearSegments <- function(characteristicPoints) {
-  return (sapply(characteristicPoints, function(x) { max(x - 1, 0) }))
-}

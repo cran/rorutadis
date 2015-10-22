@@ -14,8 +14,8 @@ novel Multiple-Criteria Decision Aiding (MCDA) framework.
 \tabular{ll}{
 Package: \tab rorutadis\cr
 Type: \tab Package\cr
-Version: \tab 0.1.3\cr
-Date: \tab 2014-07-29\cr
+Version: \tab 0.3.0\cr
+Date: \tab 2015-10-21\cr
 License: \tab GPL-3\cr
 }
 }

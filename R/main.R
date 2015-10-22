@@ -2,11 +2,11 @@
 
 #' Check problem consistency
 #'
-#' This function allows to check consistency of a problem.
+#' This function allows to check if preference information is consistent.
 #' 
 #' @param problem Problem to check. 
 #' @return \code{TRUE} if a model of a problem is feasible and \code{FALSE}
-#' if infeasible.
+#' otherwise.
 #' @examples
 #' perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
 #' problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
@@ -15,109 +15,95 @@
 #' isConsistent <- checkConsistency(problem)
 #' @export
 checkConsistency <- function(problem) {
-  model <- buildBaseModel(problem)
-  epsilonIndex <- getEpsilonIndex(problem)
-  return (isModelConsistent(model, epsilonIndex))
+  model <- buildModel(problem, TRUE)
+  return (isModelConsistent(model))
 }
 
-checkRelation <- function(alternative, class, necessary, problem, baseModel,
-                          altVars, firstThresholdIndex, lastThresholdIndex,
-                          epsilonIndex) {
-  for (i in 1:(ncol(baseModel$lhs) - epsilonIndex))
-    altVars <- cbind(altVars, 0)
+checkRelation <- function(model, alternative, class, necessary) {
+  stopifnot(!is.null(model$epsilonIndex))
   
-  addConst <- c()
-  allConst <- baseModel
-  
-  if (necessary == TRUE) {
+  if (necessary) {
     if (class == 1) {
-      addConst <- buildLBAssignmentsConstraint(alternative,
-                                               2,
-                                               altVars,
-                                               firstThresholdIndex,
-                                               lastThresholdIndex)
-      allConst <- combineConstraints(allConst, addConst)
-    }
-    else if (class == problem$nrClasses) {
-      addConst <- buildUBAssignmentsConstraint(alternative,
-                                               problem$nrClasses - 1,
-                                               altVars,
-                                               firstThresholdIndex,
-                                               lastThresholdIndex,
-                                               epsilonIndex)
-      allConst <- combineConstraints(allConst, addConst)
-    }
-    else if (class > 1 && class < problem$nrClasses) {
-      addConst1 <- buildLBAssignmentsConstraint(alternative,
-                                                class + 1,
-                                                altVars,
-                                                firstThresholdIndex,
-                                                lastThresholdIndex)
-      addConst2 <- buildUBAssignmentsConstraint(alternative,
-                                                class - 1,
-                                                altVars,
-                                                firstThresholdIndex,
-                                                lastThresholdIndex,
-                                                epsilonIndex)
-      addConst3 <- list(lhs = rep(0, ncol(allConst$lhs)), dir = "==", rhs = 1) # this constraint is filled ~10 loc below
-      allConst <- combineConstraints(allConst, addConst1, addConst2, addConst3)
+      additionalConstraints <- buildLBAssignmentsConstraint(alternative, 2, model)
+    } else if (class == model$nrClasses) {
+      additionalConstraints <- buildUBAssignmentsConstraint(alternative, model$nrClasses - 1, model)
+    } else if (class > 1 && class < model$nrClasses) {
+      model$constraints <- addVarialbesToModel(model$constraints, c("B", "B"))
+      nrVariables <- ncol(model$constraints$lhs)
       
-      allConst$lhs <- cbind(allConst$lhs, 0)
-      allConst$lhs <- cbind(allConst$lhs, 0)
-      allConst$types <- c(allConst$types, "B")
-      allConst$types <- c(allConst$types, "B")
+      constrLB <- buildLBAssignmentsConstraint(alternative, class + 1, model)
+      constrUB <- buildUBAssignmentsConstraint(alternative, class - 1, model)
+      constrRel <- list(lhs = rep(0, nrVariables), dir = "==", rhs = 1)
       
-      lhsdim <- dim(allConst$lhs)
-      allConst$lhs[lhsdim[1] - 2, lhsdim[2] - 1] <- RORUTADIS_BIGM
-      allConst$lhs[lhsdim[1] - 1, lhsdim[2]] <- -RORUTADIS_BIGM
-      allConst$lhs[lhsdim[1], lhsdim[2] - 1] <- 1
-      allConst$lhs[lhsdim[1], lhsdim[2]] <- 1
+      constrLB$lhs[nrVariables - 1] <- RORUTADIS_BIGM
+      constrUB$lhs[nrVariables] <- -RORUTADIS_BIGM
+      constrRel$lhs[nrVariables - 1] <- 1
+      constrRel$lhs[nrVariables] <- 1
+      
+      additionalConstraints <- combineConstraints(constrLB, constrUB, constrRel)
     }
-  }
-  else {
-    # possible
+  } else { # possible
+    additionalConstraints <- NULL
     
     if (class > 1) {
-      addConst <- buildLBAssignmentsConstraint(alternative,
-                                               class,
-                                               altVars,
-                                               firstThresholdIndex,
-                                               lastThresholdIndex)
-      allConst <- combineConstraints(allConst, addConst)
+      additionalConstraints <- combineConstraints(additionalConstraints,
+                                                  buildLBAssignmentsConstraint(alternative, class, model))
     }
-    if (class < problem$nrClasses) {
-      addConst <- buildUBAssignmentsConstraint(alternative,
-                                               class,
-                                               altVars,
-                                               firstThresholdIndex,
-                                               lastThresholdIndex,
-                                               epsilonIndex)
-      allConst <- combineConstraints(allConst, addConst)
+    
+    if (class < model$nrClasses) {
+      additionalConstraints <- combineConstraints(additionalConstraints,
+                                                  buildUBAssignmentsConstraint(alternative, class, model))
     }
   }
   
-  ret <- maximizeEpsilon(allConst, epsilonIndex)
+  model$constraints <- combineConstraints(model$constraints, additionalConstraints)
+  optimizedEpsilon <- maximizeEpsilon(model)
   
-  if (necessary == TRUE) {
-    return (ret$status != 0 || ret$optimum < RORUTADIS_MINEPS)
-  }
-  else {
-    return (ret$status == 0 && ret$optimum >= RORUTADIS_MINEPS)
+  if (necessary) {
+    return (optimizedEpsilon$status != 0 || optimizedEpsilon$optimum < RORUTADIS_MINEPS)
+  } else {
+    return (optimizedEpsilon$status == 0 && optimizedEpsilon$optimum >= RORUTADIS_MINEPS)
   }
 }
 
-checkClassCardinality <- function(class, maximum, nrAlternatives, nrClasses,
-                                  model, firstClAsgnBinVarIndex) {
-  obj <- rep(0, ncol(model$lhs))
-  for(alternative in 0:(nrAlternatives - 1)) {
-    index <- firstClAsgnBinVarIndex + alternative * nrClasses + class - 1
-    obj[index]  <- 1
+calculateExtremeClassCardinality <- function(model, class, maximum) {
+  firstAssignmentVariableIndex <- model$firstThresholdIndex + model$nrClasses - 1
+  
+  obj <- rep(0, ncol(model$constraints$lhs))
+  for(alternative in seq_len(nrow(model$perfToModelVariables))) {
+    obj[firstAssignmentVariableIndex + (alternative - 1) * model$nrClasses + class - 1]  <- 1
   }
-  ret <- Rglpk_solve_LP(obj, model$lhs, model$dir, model$rhs, max = maximum,
-                        types = model$types)
-  rm(model)
-  gc()
-  return (ret$optimum)
+  
+  solution <- Rglpk_solve_LP(obj, model$constraints$lhs, model$constraints$dir, model$constraints$rhs,
+                             max = maximum, types = model$constraints$types)
+  
+  stopifnot(solution$status == 0)
+  
+  return (solution$optimum)
+}
+
+# TRUE if alternative is always assigned to class at least as good as class of referenceAlternative
+compareAssignment <- function(model, alternative, referenceAlternative) {
+  stopifnot(!is.null(model$epsilonIndex))
+  
+  if (alternative == referenceAlternative) {
+    return (TRUE)
+  }
+  
+  for (class in seq_len(model$nrClasses - 1)) {
+    newModel <- model
+    
+    constraintForI <- buildUBAssignmentsConstraint(alternative, class, newModel)
+    constraintForJ <- buildLBAssignmentsConstraint(referenceAlternative, class + 1, newModel)
+    
+    newModel$constraints <- combineConstraints(newModel$constraints, constraintForI, constraintForJ)
+    
+    if (isModelConsistent(newModel)) {
+      return (FALSE)
+    }
+  }
+  
+  return (TRUE)
 }
 
 #### MAIN PUBLIC FUNCTIONS
@@ -149,20 +135,15 @@ calculateAssignments <- function(problem, necessary) {
   if (!checkConsistency(problem))
     stop("Model infeasible.")
   
-  baseModel <- buildBaseModel(problem)
+  model <- buildModel(problem, T)
   rel <- matrix(nrow = nrow(problem$perf), ncol = problem$nrClasses)
-  altVars <- buildAltVariableMatrix(problem$perf)
-  firstThresholdIndex <- getFirstThresholdIndex(problem)
-  lastThresholdIndex <- getLastThresholdIndex(problem)
-  epsilonIndex <- getEpsilonIndex(problem)
   
-  for (alternative in 1:nrow(rel))
-    for(class in 1:ncol(rel)) {
-      rel[alternative, class] <- checkRelation(alternative, class, necessary, problem,
-                                               baseModel, altVars, firstThresholdIndex,
-                                               lastThresholdIndex, epsilonIndex)
+  for (alternative in seq_len(nrow(problem$perf))) {
+    for(class in seq_len(problem$nrClasses)) {
+      rel[alternative, class] <- checkRelation(model, alternative, class, necessary)
       if (RORUTADIS_VERBOSE) print (paste("relation ", alternative, class, "is", rel[alternative, class]))
     }
+  }
   
   if (!is.null(rownames(problem$perf)))
     rownames(rel) <- rownames(problem$perf)
@@ -172,16 +153,14 @@ calculateAssignments <- function(problem, necessary) {
 
 #' Compare assignments
 #'
-#' This function compares assignments. In this version of the package only necessary
-#' assignments are supported.
+#' This function compares assignments.
 #'
 #' @param problem Problem for which assignments will be compared.
-#' @param necessary Whether necessary or possible assignments. 
+#' @param necessary Whether necessary or possible assignments.
 #' @return \emph{n} x \emph{n} logical matrix, where \code{n} is a number of
 #' alternatives. Cell \code{[i, j]} is \code{TRUE} if \emph{a_i} is assigned to
 #' class at least as good as class of \emph{a_j} for all compatible value
-#' functions for necessary assignments or for at least one compatible value function
-#' for possible assignments.
+#' functions.
 #' @examples
 #' perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
 #' problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
@@ -192,40 +171,17 @@ calculateAssignments <- function(problem, necessary) {
 compareAssignments <- function(problem, necessary = TRUE) {
   if (necessary == FALSE) {
     stop("Comparing possible assignments not supported.")
-  }
+  } 
   
   nrAlternatives <- nrow(problem$perf)
-  altVars <- buildAltVariableMatrix(problem$perf)
-  baseModel <- buildBaseModel(problem)
-  epsilonIndex <- ncol(altVars)
-  firstThresholdIndex <- ncol(altVars) + sum(getNrLinearSegments(problem$characteristicPoints)) + 1
-  lastThresholdIndex <- firstThresholdIndex + problem$nrClasses - 2
-  
-  for (i in 1:(ncol(baseModel$lhs) - epsilonIndex))
-    altVars <- cbind(altVars, 0)
+  model <- buildModel(problem, T)
   
   result <- matrix(nrow = nrAlternatives, ncol = nrAlternatives)
   
-  for (i in 1:nrAlternatives) {
-    for (j in 1:nrAlternatives) {
-      result[i, j] <- TRUE
-      
-      for (class in 1:(problem$nrClasses - 1)) {
-        constraintForI <- buildUBAssignmentsConstraint(i, class, altVars, firstThresholdIndex,
-                                                       lastThresholdIndex, epsilonIndex)
-        constraintForJ <- buildLBAssignmentsConstraint(j, class + 1, altVars, firstThresholdIndex,
-                                                       lastThresholdIndex)
-        
-        newModel <- combineConstraints(baseModel, constraintForI, constraintForJ)
-        
-        ret <- maximizeEpsilon(newModel, epsilonIndex)
-        
-        if (ret$status == 0 && ret$optimum >= RORUTADIS_MINEPS) {
-          result[i, j] <- FALSE
-          break
-        }
-      }
-      
+  for (i in seq_len(nrAlternatives)) {
+    for (j in seq_len(nrAlternatives)) {
+      result[i, j] <- compareAssignment(model, i, j)
+            
       if (RORUTADIS_VERBOSE) print (paste("It is ", result[i, j], " that alternative ",
                                           i, " is always in at least as good class as class of alternative ",
                                           j, ".", sep = ""))
@@ -258,22 +214,23 @@ calculateExtremeClassCardinalities <- function(problem) {
   if (!checkConsistency(problem))
     stop("Model infeasible.")
   
-  baseModel <- buildBaseModel(problem, isEpsilonStrictyPositive = TRUE)
-  nrAlternatives <- nrow(problem$perf)
-  firstClAsgnBinVarIndex <- getFirstClAsgnBinVarIndex(problem)
-  rel <- matrix(nrow = problem$nrClasses, ncol = 2)
+  model <- buildModel(problem, FALSE)
+  
+  if (ncol(model$constraints$lhs) == model$firstThresholdIndex + problem$nrClasses - 2) {
+    model <- extendModelWithAssignmentVariables(model)
+  }
+
+  result <- matrix(nrow = problem$nrClasses, ncol = 2)
   
   for(class in 1:problem$nrClasses) {
-    rel[class, 1] <- checkClassCardinality(class, FALSE, nrAlternatives,
-                                           problem$nrClasses, baseModel, firstClAsgnBinVarIndex)
+    result[class, 1] <- calculateExtremeClassCardinality(model, class, FALSE)
     if (RORUTADIS_VERBOSE) print (paste("minimal cardinality of class ", class, "equals", rel[class, 1]))
     
-    rel[class, 2] <- checkClassCardinality(class, TRUE, nrAlternatives,
-                                           problem$nrClasses, baseModel, firstClAsgnBinVarIndex)
+    result[class, 2] <- calculateExtremeClassCardinality(model, class, TRUE)
     if (RORUTADIS_VERBOSE) print (paste("maximal cardinality of class ", class, "equals", rel[class, 2]))
   }
   
-  return (rel)
+  return (result)
 }
 
 #' Merge different assignments
@@ -364,67 +321,75 @@ mergeAssignments <- function(assignmentList, necessary) {
 #' \item \code{0} - iterative mode,
 #' \item \code{1} - compromise mode.
 #' }
-#' @param relation A matrix of assignment pairwise comparisons. Can be provided if
-#' it has been calculated earlier (with \code{\link{compareAssignments}}). If
-#' the parameter is \code{NULL}, it will be computed.
-#' @return This function returns a result of solving model of a problem. It can be
-#' used for further computations (e.g. \code{\link{getThresholds}},
-#' \code{\link{getMarginalUtilities}}, \code{\link{getCharacteristicPoints}}). If representative utility function was
-#' not found, the function returns \code{NULL}.
+#' @param relation A matrix of assignment pairwise comparisons (see
+#' \code{\link{compareAssignments}}). If the parameter is \code{NULL}, the relation
+#' will be computed.
+#' @return List with named elements:
+#' \itemize{
+#' \item \code{vf} - list of 2-column matrices with marginal value functions (characteristic point in rows),
+#' \item \code{thresholds},
+#' \item \code{assignments},
+#' \item \code{alternativeValues},
+#' \item \code{epsilon}.
+#' }
+#' \code{NULL} is returned if representative function cannot be found.
 #' @seealso
-#' \code{\link{getCharacteristicPoints}}
-#' \code{\link{getMarginalUtilities}} 
-#' \code{\link{getThresholds}}
+#' \code{\link{plotVF}}
+#' \code{\link{plotComprehensiveValue}}
+#' \code{\link{findSimpleFunction}}
 #' @examples
 #' perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
 #' problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
 #' problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
 #' 
 #' representativeFunction <- findRepresentativeFunction(problem, 0)
-#' thresholds <- getThresholds(problem, representativeFunction)
+#' assignments <- representativeFunction$assignments
 #' @export
 findRepresentativeFunction <- function(problem, mode, relation = NULL) {
   stopifnot(mode == 0 || mode == 1)
+  
+  solution <- NULL
   
   if (is.null(relation)) {
     relation <- compareAssignments(problem)
   }
   
-  model <- buildBaseModel(problem, TRUE)
+  model <- buildModel(problem, F)
   nrAlternatives <- nrow(problem$perf)
-  altVars <- buildAltVariableMatrix(problem$perf)
   
-  if (mode == 0) {
-    # iterative mode
-    
-    deltaIndex <- ncol(model$lhs) + 1
-    gammaIndex <- ncol(model$lhs) + 3
-    model <- addVarialbesToModel(model, c("C", "C", "C", "C"))
+  if (mode == 0) { # iterative mode    
+    deltaIndex <- ncol(model$constraints$lhs) + 1
+    gammaIndex <- ncol(model$constraints$lhs) + 3
+    model$constraints <- addVarialbesToModel(model$constraints, c("C", "C", "C", "C"))
+    nrVariables <- ncol(model$constraints$lhs)
     
     for (i in 1:(nrAlternatives - 1)) {
       for (j in (i + 1):nrAlternatives) {
         if (relation[i, j] && !relation[j, i]) {
           #U(a_i) - U(a_j) >= delta
-          newConstraint <- buildUtilityDifferenceConstraint(i, j, altVars, ncol(model$lhs))
-          newConstraint[deltaIndex] <- -1
-          newConstraint[deltaIndex + 1] <- 1
-          model <- combineConstraints(model, list(lhs = newConstraint, dir = ">=", rhs = 0))
-        }
-        else if (!relation[i, j] && relation[j, i]) {
+          valueDifferenceLhs <- ua(i, nrVariables, model$perfToModelVariables) -
+            ua(j, nrVariables, model$perfToModelVariables)
+          valueDifferenceLhs[deltaIndex] <- -1
+          valueDifferenceLhs[deltaIndex + 1] <- 1
+          model$constraints <- combineConstraints(model$constraints,
+                                                  list(lhs = valueDifferenceLhs, dir = ">=", rhs = 0))
+        } else if (!relation[i, j] && relation[j, i]) {
           #U(a_j) - U(a_i) >= delta
-          newConstraint <- buildUtilityDifferenceConstraint(j, i, altVars, ncol(model$lhs))
-          newConstraint[deltaIndex] <- -1
-          newConstraint[deltaIndex + 1] <- 1
-          model <- combineConstraints(model, list(lhs = newConstraint, dir = ">=", rhs = 0))
+          valueDifferenceLhs <- ua(j, nrVariables, model$perfToModelVariables) -
+            ua(i, nrVariables, model$perfToModelVariables)
+          valueDifferenceLhs[deltaIndex] <- -1
+          valueDifferenceLhs[deltaIndex + 1] <- 1
+          model$constraints <- combineConstraints(model$constraints,
+                                                  list(lhs = valueDifferenceLhs, dir = ">=", rhs = 0))
         }
       }
     }
     
-    obj <- rep(0, ncol(model$lhs))
+    obj <- rep(0, nrVariables)
     obj[deltaIndex] <- 1  
     obj[deltaIndex + 1] <- -1 
-    solution <-  Rglpk_solve_LP(obj, model$lhs, model$dir, model$rhs,
-                                max = TRUE, types = model$types)
+    solution <- Rglpk_solve_LP(obj, model$constraints$lhs, model$constraints$dir, model$constraints$rhs,
+                               max = TRUE, types = model$constraints$types)
     
     if (solution$status != 0) {
       return (NULL)
@@ -434,36 +399,44 @@ findRepresentativeFunction <- function(problem, mode, relation = NULL) {
       warning(paste("Solution was found, but the optimization target is negative (", solution$optimum, ").", sep = ""))
     }
     
-    newConstraint <- rep(0, ncol(model$lhs))
-    newConstraint[deltaIndex] <- 1
-    newConstraint[deltaIndex + 1] <- -1
-    model <- combineConstraints(model, list(lhs = newConstraint,
-                                            dir = "==",
-                                            rhs = solution$optimum))
-    # print (solution$optimum)
+    fixedDeltaConstr <- rep(0, nrVariables)
+    fixedDeltaConstr[deltaIndex] <- 1
+    fixedDeltaConstr[deltaIndex + 1] <- -1
+    model$constraints <- combineConstraints(model$constraints, list(lhs = fixedDeltaConstr,
+                                                                    dir = "==",
+                                                                    rhs = solution$optimum))
     
     for (i in 1:(nrAlternatives - 1)) {
       for (j in (i + 1):nrAlternatives) {
         if (relation[i, j] == relation[j, i]) {
           #U(a_i) - U(a_j) <= gamma
           #U(a_j) - U(a_i) <= gamma
-          newConstraint <- buildUtilityDifferenceConstraint(i, j, altVars, ncol(model$lhs))
-          newConstraint[gammaIndex] <- -1
-          newConstraint[gammaIndex + 1] <- 1
-          model <- combineConstraints(model, list(lhs = newConstraint, dir = "<=", rhs = 0))
-          newConstraint <- buildUtilityDifferenceConstraint(j, i, altVars, ncol(model$lhs))
-          newConstraint[gammaIndex] <- -1
-          newConstraint[gammaIndex + 1] <- 1
-          model <- combineConstraints(model, list(lhs = newConstraint, dir = "<=", rhs = 0))
+          ijValueDifferenceLhs <- ua(i, nrVariables, model$perfToModelVariables) -
+            ua(j, nrVariables, model$perfToModelVariables)
+          ijValueDifferenceLhs[gammaIndex] <- -1
+          ijValueDifferenceLhs[gammaIndex + 1] <- 1
+          
+          jiValueDifferenceLhs <- ua(j, nrVariables, model$perfToModelVariables) -
+            ua(i, nrVariables, model$perfToModelVariables)
+          jiValueDifferenceLhs[gammaIndex] <- -1
+          jiValueDifferenceLhs[gammaIndex + 1] <- 1
+          
+          model$constraints <- combineConstraints(model$constraints,
+                                                  list(lhs = ijValueDifferenceLhs,
+                                                       dir = "<=",
+                                                       rhs = 0),
+                                                  list(lhs = jiValueDifferenceLhs,
+                                                       dir = "<=",
+                                                       rhs = 0))
         }
       }
     }
     
-    obj <- rep(0, ncol(model$lhs))
+    obj <- rep(0, nrVariables)
     obj[gammaIndex] <- 1  
     obj[gammaIndex + 1] <- -1 
-    solution <- Rglpk_solve_LP(obj, model$lhs, model$dir, model$rhs,
-                              max = FALSE, types = model$types)
+    solution <- Rglpk_solve_LP(obj, model$constraints$lhs, model$constraints$dir, model$constraints$rhs,
+                               max = FALSE, types = model$constraints$types)
     
     if (solution$status != 0) {
       return (NULL)
@@ -472,15 +445,10 @@ findRepresentativeFunction <- function(problem, mode, relation = NULL) {
     if (solution$optimum < 0) {
       warning(paste("Solution was found, but the optimization target is negative (", solution$optimum, ").", sep = ""))
     }
-    
-    return (solution)
-  }
-  else if (mode == 1) {
-    # compromise mode
-    
-    deltaIndex <- ncol(model$lhs) + 1
-    model <- addVarialbesToModel(model, c("C", "C"))
-    altVars <- buildAltVariableMatrix(problem$perf)
+  } else if (mode == 1) { # compromise mode    
+    deltaIndex <- ncol(model$constraints$lhs) + 1
+    model$constraints <- addVarialbesToModel(model$constraints, c("C", "C"))
+    nrVariables <- ncol(model$constraints$lhs)
     different <- c()
     similar <- c()
     
@@ -488,11 +456,9 @@ findRepresentativeFunction <- function(problem, mode, relation = NULL) {
       for (j in (i + 1):nrAlternatives) {
         if (relation[i, j] && !relation[j, i]) {
           different <- c(different, i, j)
-        }
-        else if (!relation[i, j] && relation[j, i]) {
+        } else if (!relation[i, j] && relation[j, i]) {
           different <- c(different, j, i)
-        }
-        else {
+        } else {
           similar <- c(similar, i, j)
         }
       }
@@ -504,23 +470,22 @@ findRepresentativeFunction <- function(problem, mode, relation = NULL) {
     
     for (i in seq(1, length(different), by = 2)) {
       for (j in seq(1, length(similar), by = 2)) {
-        newConstraint <- buildUtilityMultipleDifferenceConstraint(different[i],
-                                                                  different[i + 1],
-                                                                  similar[j],
-                                                                  similar[j + 1], 
-                                                                  altVars,
-                                                                  ncol(model$lhs))
-        newConstraint[deltaIndex] <- -1
-        newConstraint[deltaIndex + 1] <- 1
-        model <- combineConstraints(model, list(lhs = newConstraint, dir = ">=", rhs = 0))
+        valueDifferenceLhs <- ua(different[i], nrVariables, model$perfToModelVariables) -
+          ua(different[i + 1], nrVariables, model$perfToModelVariables) +
+          ua(similar[j], nrVariables, model$perfToModelVariables) -
+          ua(similar[j + 1], nrVariables, model$perfToModelVariables)
+        valueDifferenceLhs[deltaIndex] <- -1
+        valueDifferenceLhs[deltaIndex + 1] <- 1
+        model$constraints <- combineConstraints(model$constraints,
+                                                list(lhs = valueDifferenceLhs, dir = ">=", rhs = 0))
       }
     }
     
-    obj <- rep(0, ncol(model$lhs))
+    obj <- rep(0, nrVariables)
     obj[deltaIndex] <- 1  
     obj[deltaIndex + 1] <- -1 
-    solution <- Rglpk_solve_LP(obj, model$lhs, model$dir, model$rhs,
-                               max = TRUE, types = model$types)
+    solution <- Rglpk_solve_LP(obj, model$constraints$lhs, model$constraints$dir, model$constraints$rhs,
+                               max = TRUE, types = model$constraints$types)
     
     if (solution$status != 0) {
       return (NULL)
@@ -529,8 +494,44 @@ findRepresentativeFunction <- function(problem, mode, relation = NULL) {
     if (solution$optimum < 0) {
       warning(paste("Solution was found, but the optimization target is negative (", solution$optimum, ").", sep = ""))
     }
-    
-    return (solution)
   }
+  
+  return (toSolution(model, solution$solution))
+}
+
+#' Find one value function
+#'
+#' This function finds single value function that is consistent with provided preferece information.
+#' Search is done by epsilon maximization.
+#' 
+#' @param problem Problem
+#' @return List with named elements:
+#' \itemize{
+#' \item \code{vf} - list of 2-column matrices with marginal value functions (characteristic point in rows),
+#' \item \code{thresholds},
+#' \item \code{assignments},
+#' \item \code{alternativeValues},
+#' \item \code{epsilon}.
+#' }
+#' @seealso
+#' \code{\link{plotVF}}
+#' \code{\link{plotComprehensiveValue}}
+#' \code{\link{findRepresentativeFunction}}
+#' @examples
+#' perf <- matrix(c(5, 2, 1, 7, 0.5, 0.9, 0.4, 0.4), ncol = 2)
+#' problem <- buildProblem(perf, 3, FALSE, c('g', 'g'), c(0, 0))
+#' problem <- addAssignmentsLB(problem, c(1, 2), c(2, 3))
+#' 
+#' simpleFunction <- findSimpleFunction(problem)
+#' @export
+findSimpleFunction <- function(problem) {
+  model <- buildModel(problem, TRUE)
+  solution <- maximizeEpsilon(model)
+  
+  if (solution$status == 0 && solution$optimum >= RORUTADIS_MINEPS) {
+    return (toSolution(model, solution$solution))
+  }
+  
+  return (NULL)
 }
 

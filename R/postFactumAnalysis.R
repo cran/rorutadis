@@ -12,8 +12,7 @@ isModelConsistentForRho <- function(alternative, atLeastToClass, criteria, neces
                                                     limits[criterion])
       }
     }
-  }
-  else {
+  } else {
     # deterioration
     for (criterion in 1:ncol(problem$perf)) {
       if (criteria[criterion]) {
@@ -23,20 +22,19 @@ isModelConsistentForRho <- function(alternative, atLeastToClass, criteria, neces
     }
   }
   
-  firstThresholdIndex <- getFirstThresholdIndex(problem)
-  lastThresholdIndex <- getLastThresholdIndex(problem)
-  altVars <- buildAltVariableMatrix(problem$perf)
-  epsilonIndex <- getEpsilonIndex(problem)
-  model <- buildBaseModel(problem)
-  model <- addAlternativeThresholdComparisionConstraint(alternative,
-                                                        atLeastToClass - 1,
-                                                        model,
-                                                        altVars,
-                                                        necessary,
-                                                        firstThresholdIndex,
-                                                        lastThresholdIndex)
+  model <- buildModel(problem, T)
   
-  return (isModelConsistent(model, epsilonIndex))
+  if (atLeastToClass > 1) {
+    if (necessary) {
+      model$constraints <- combineConstraints(model$constraints,
+                                              buildUBAssignmentsConstraint(alternative, atLeastToClass - 1, model))
+    } else {
+      model$constraints <- combineConstraints(model$constraints,
+                                              buildLBAssignmentsConstraint(alternative, atLeastToClass, model))
+    }
+  }
+  
+  return (isModelConsistent(model))
 }
 
 
@@ -78,15 +76,15 @@ deteriorateAssignment <- function(alternative,
     stop("Function deteriorateAssignment works only for cases with non-negative evaluations.")
   }
   
-  if (length(which(criteriaManipulability) == TRUE) == 0) {
+  if (length(which(criteriaManipulability)) == 0) {
     stop("At least one criterion has to be active for manipulation.")
   }
   
   if (length(which(problem$criteria == 'c')) != 0) {
-    stop("Function deteriorateAssignment works only for cases with no cost criterion.")
+    stop("Function deteriorateAssignment works only for cases with 'gain' criteria.")
   }
   
-  if (sum(problem$perf[alternative, which(criteriaManipulability == TRUE)]) == 0) {
+  if (sum(problem$perf[alternative, which(criteriaManipulability)]) == 0) {
     stop("All performances of the alternative on selected criteria are equal to zero. Analysis cannot be performed.")
   }
   
@@ -218,15 +216,15 @@ improveAssignment <- function(alternative,
     stop("Function improveAssignment works only for cases with non-negative evaluations.")
   }
   
-  if (length(which(criteriaManipulability) == TRUE) == 0) {
+  if (length(which(criteriaManipulability)) == 0) {
     stop("At least one criterion has to be active for manipulation.")
   }
   
   if (length(which(problem$criteria == 'c')) != 0) {
-    stop("Function improveAssignment works only for cases with no cost criterion.")
+    stop("Function improveAssignment works only for cases with 'gain' criteria.")
   }
   
-  if (sum(problem$perf[alternative, which(criteriaManipulability == TRUE)]) == 0) {
+  if (sum(problem$perf[alternative, which(criteriaManipulability)]) == 0) {
     stop("All performances of the alternative on selected criteria are equal to zero. Analysis cannot be performed.")
   }
       
@@ -241,8 +239,7 @@ improveAssignment <- function(alternative,
   for (criterion in 1:ncol(problem$perf)) {
     if (criteriaManipulability[criterion]) {
       limits <- c(limits, max(problem$perf[, criterion]))
-    }
-    else {
+    } else {
       limits <- c(limits, problem$perf[alternative, criterion])
     }
   }
@@ -265,7 +262,7 @@ improveAssignment <- function(alternative,
   right <- 1
   if (length(original) > 0) {
     right <- max(maximums / original)
-  }
+  }  
   current <- 1# not left + (right - left)/ 2 due to an immediate and accurate response if improvement is not possible
   valueForLastTrue <- NULL
   
@@ -332,7 +329,7 @@ improveAssignment <- function(alternative,
 #' \itemize{
 #' \item \code{ux} - value of missing utility,
 #' \item \code{solution} - result of solving model. It can be used for further
-#' computations (e.g. \code{\link{getThresholds}}, \code{\link{getMarginalUtilities}},
+#' computations (\code{\link{getAssignments}}, \code{\link{getThresholds}}, \code{\link{getMarginalUtilities}},
 #' \code{\link{getCharacteristicPoints}}).
 #' }
 #' \code{NULL} is returned if given assignment is not possible.
@@ -352,30 +349,39 @@ investigateUtility <- function(alternative, atLeastToClass, necessary, problem) 
   stopifnot(atLeastToClass > 1)
   stopifnot(atLeastToClass <= problem$nrClasses)
   
-  epsilonIndex <- getEpsilonIndex(problem)
-  firstThresholdIndex <- getFirstThresholdIndex(problem)
-  lastThresholdIndex <- getLastThresholdIndex(problem)
-  altVars <- buildAltVariableMatrix(problem$perf)
-  model <- buildBaseModel(problem, TRUE)
-  model <- addVarialbesToModel(model, c("C", "C"))
-  uxIndex <- ncol(model$lhs) - 1
+  model <- buildModel(problem, FALSE)
+  model$constraints <- addVarialbesToModel(model$constraints, c("C", "C"))
+  uxIndex <- ncol(model$constraints$lhs) - 1
   
-  model <- addAlternativeThresholdComparisionConstraint(alternative, atLeastToClass - 1,
-                                                        model, altVars, necessary,
-                                                        firstThresholdIndex, lastThresholdIndex,
-                                                        uxIndex)
+  if (atLeastToClass > 1) {
+    if (necessary) {
+      constr <- buildUBAssignmentsConstraint(alternative, atLeastToClass - 1, model)
+      constr$rhs <- 0
+    } else {
+      constr <- buildLBAssignmentsConstraint(alternative, atLeastToClass, model)
+    }
+    
+    constr$lhs[uxIndex] <- 1
+    constr$lhs[uxIndex + 1] <- -1
+    
+    model$constraints <- combineConstraints(model$constraints, constr)
+  }
   
-  obj <- rep(0, ncol(model$lhs))
+  obj <- rep(0, ncol(model$constraints$lhs))
   obj[uxIndex] <- 1
   obj[uxIndex + 1] <- -1
-  ret <- Rglpk_solve_LP(obj, model$lhs, model$dir, model$rhs, max = necessary, types = model$types)
-  
-  ux <- 0
-  if (ret$optimum > 0)
-    ux <- ret$optimum
-  
-  if (ret$status == 0)
-    return (list(ux = ux, solution = ret))
-  else
+  ret <- Rglpk_solve_LP(obj, model$constraints$lhs, model$constraints$dir, model$constraints$rhs,
+                        max = necessary, types = model$constraints$types)
+
+  if (ret$status == 0) {
+    ux <- 0
+    
+    if (ret$optimum > 0) {
+      ux <- ret$optimum
+    }
+    
+    return (list(ux = ux, solution = toSolution(model, ret$solution)))
+  } else {
     return (NULL)
+  }
 }
