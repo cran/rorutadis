@@ -311,7 +311,7 @@ buildModel <- function(problem, includeEpsilonAsVariable) {
   
   constraints <- list(lhs = lhs, dir = "==", rhs = 1)
   
-  # monotonocity of vf
+  # monotonicity of vf
   
   for (j in seq_len(nrCriteria)) {
     for (k in seq_len(chPoints[j] - 2)) {
@@ -342,9 +342,9 @@ buildModel <- function(problem, includeEpsilonAsVariable) {
     rhs <- 0
     
     if (problem$criteria[j] == 'g')
-      lhs[firstChPointVariableIndex[j] + chPoints[j] - 2] <- -1
-    else
       lhs[firstChPointVariableIndex[j]] <- -1
+    else
+      lhs[firstChPointVariableIndex[j] + chPoints[j] - 2] <- -1
     
     if (problem$strictVF) {
       if (includeEpsilonAsVariable) {
