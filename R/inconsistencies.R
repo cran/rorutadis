@@ -33,7 +33,15 @@ findInconsistencies <- function(problem) {
   
   model <- buildModel(problem, FALSE)
   
-  numberOfPrefereranceInformationRecords <- length(model$prefInfoToConstraints)
+  prefInfoIndexMap <- c()
+  
+  for (i in seq_len(length(model$prefInfoToConstraints))) {
+    if (!is.null(model$prefInfoToConstraints[[i]])) {
+      prefInfoIndexMap <- c(prefInfoIndexMap, i)
+    }
+  }
+  
+  numberOfPrefereranceInformationRecords <- length(prefInfoIndexMap)
   
   if (numberOfPrefereranceInformationRecords == 0) {
     stop("There is no preference information in the problem.")
@@ -43,8 +51,8 @@ findInconsistencies <- function(problem) {
   model$constraints <- addVarialbesToModel(model$constraints, rep("B", numberOfPrefereranceInformationRecords))
   
   for (i in seq_len(numberOfPrefereranceInformationRecords)) {
-    for (j in seq_len(length(model$prefInfoToConstraints[[i]]))) {
-      constraintIndex <- model$prefInfoToConstraints[[i]][j]
+    for (j in seq_len(length(model$prefInfoToConstraints[[prefInfoIndexMap[i]]]))) {
+      constraintIndex <- model$prefInfoToConstraints[[prefInfoIndexMap[i]]][j]
       
       if (model$constraints$dir[constraintIndex] == ">=") {
         model$constraints$lhs[constraintIndex, firstPrefInfoVariable + i - 1] <- RORUTADIS_BIGM
@@ -66,8 +74,13 @@ findInconsistencies <- function(problem) {
     if (solution$status == 0) {
       resultVector <- solution$solution[(firstPrefInfoVariable):(firstPrefInfoVariable + numberOfPrefereranceInformationRecords)]
       incSetIndices <- which(resultVector == 1)
+      incSetMappedIndices <- c()
       
-      result[[length(result) + 1]] <- incSetIndices
+      for (i in incSetIndices) {
+        incSetMappedIndices <- c(incSetMappedIndices, prefInfoIndexMap[i])
+      }
+      
+      result[[length(result) + 1]] <- incSetMappedIndices 
       
       lhs <- rep(0, firstPrefInfoVariable + numberOfPrefereranceInformationRecords - 1)
       lhs[firstPrefInfoVariable + incSetIndices - 1] <- 1

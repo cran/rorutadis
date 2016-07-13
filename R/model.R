@@ -436,10 +436,14 @@ buildModel <- function(problem, includeEpsilonAsVariable) {
       alternative <- problem$assignmentsLB[k, 1]
       atLeastToClass <- problem$assignmentsLB[k, 2]
             
-      model$constraints <- combineConstraints(model$constraints,
-                                              buildLBAssignmentsConstraint(alternative, atLeastToClass, model))
+      cstr <- buildLBAssignmentsConstraint(alternative, atLeastToClass, model)
+      if (!is.null(cstr)) {
+        model$constraints <- combineConstraints(model$constraints, cstr)
+        model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+      } else {
+        model$prefInfoToConstraints[[prefInfoIndex]] <- NULL
+      }
       
-      model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
       prefInfoIndex <- prefInfoIndex + 1
     }
   }
@@ -449,10 +453,15 @@ buildModel <- function(problem, includeEpsilonAsVariable) {
       alternative <- problem$assignmentsUB[k, 1]
       atMostToClass <- problem$assignmentsUB[k, 2]
       
-      model$constraints <- combineConstraints(model$constraints,
-                                              buildUBAssignmentsConstraint(alternative, atMostToClass, model))
+      cstr <- buildUBAssignmentsConstraint(alternative, atMostToClass, model)
+      if (!is.null(cstr)) {
+        model$constraints <- combineConstraints(model$constraints, cstr)
       
-      model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+        model$prefInfoToConstraints[[prefInfoIndex]] <- nrow(model$constraints$lhs)
+      } else {
+        model$prefInfoToConstraints[[prefInfoIndex]] <- NULL
+      }
+      
       prefInfoIndex <- prefInfoIndex + 1
     }
   }  
@@ -490,7 +499,12 @@ buildModel <- function(problem, includeEpsilonAsVariable) {
         model$constraints <- combineConstraints(model$constraints,
                                                 buildLBAssignmentsConstraint(alternative, d + 1, model))
         
-        model$prefInfoToConstraints[[prefInfoIndex]] <- prefInfoStartIndex:nrow(model$constraints$lhs)
+        if (prefInfoStartIndex <= nrow(model$constraints$lhs)) {
+          model$prefInfoToConstraints[[prefInfoIndex]] <- prefInfoStartIndex:nrow(model$constraints$lhs)
+        } else {
+          model$prefInfoToConstraints[[prefInfoIndex]] <- NULL
+        }
+        
         prefInfoIndex <- prefInfoIndex + 1
       }
     }
@@ -515,7 +529,12 @@ buildModel <- function(problem, includeEpsilonAsVariable) {
                                                                                  m + d))
         }
         
-        model$prefInfoToConstraints[[prefInfoIndex]] <- prefInfoStartIndex:nrow(model$constraints$lhs)
+        if (prefInfoStartIndex <= nrow(model$constraints$lhs)) {
+          model$prefInfoToConstraints[[prefInfoIndex]] <- prefInfoStartIndex:nrow(model$constraints$lhs)
+        } else {
+          model$prefInfoToConstraints[[prefInfoIndex]] <- NULL
+        }
+        
         prefInfoIndex <- prefInfoIndex + 1
       }
     }    

@@ -96,7 +96,16 @@ explainAssignment <- function(alternative, classInterval, problem) {
     model$constraints <- combineConstraints(model$constraints, constr1, constr2, constrRel)
   }
   
-  nrPreferenceInformation <- length(model$prefInfoToConstraints)
+  prefInfoIndexMap <- c()
+  
+  for (i in seq_len(length(model$prefInfoToConstraints))) {
+    if (!is.null(model$prefInfoToConstraints[[i]])) {
+      prefInfoIndexMap <- c(prefInfoIndexMap, i)
+    }
+  }
+  
+  nrPreferenceInformation <- length(prefInfoIndexMap)
+  
   preferentialReducts <- list()
   
   if (nrPreferenceInformation > 0) {
@@ -112,15 +121,21 @@ explainAssignment <- function(alternative, classInterval, problem) {
     for (i in 1:length(subsets)) {
       for (j in 1:ncol(subsets[[i]])) {
         subset <- subsets[[i]][, j]
+        subsetInOriginal <- c()
+        
+        for (i in subset) {
+          subsetInOriginal <- c(subsetInOriginal, prefInfoIndexMap[i])
+        }
+        
         if (subset[1] > 0) {
           newModel <- model
           
           if (length(subset) != nrPreferenceInformation) {
-            newModel$constraints <- removeConstraints(newModel$constraints, unlist(model$prefInfoToConstraints[-subset]))
+            newModel$constraints <- removeConstraints(newModel$constraints, unlist(model$prefInfoToConstraints[-subsetInOriginal]))
           }
           
           if (!isModelConsistent(newModel)) {
-            preferentialReducts[[length(preferentialReducts) + 1]] <- subset
+            preferentialReducts[[length(preferentialReducts) + 1]] <- subsetInOriginal
             
             for (k in 1:length(subsets)) {
               for (l in 1:ncol(subsets[[k]])) {
