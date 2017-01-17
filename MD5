@@ -1,14 +1,14 @@
-022bf97edba56a58c9a63477f28c56e6 *DESCRIPTION
+4ba859bddbd267bd5c039ed1f7af3a67 *DESCRIPTION
 e65c4e0ebe721e92ab1d1a318c1c2f51 *NAMESPACE
 572024f90d97eb659505c04f48e8ee1b *R/drawing.R
-4f439c4a77ecf60277b49d775c108cc8 *R/explanations.R
+ab605a4456bb46bcd50a103f88042f9c *R/explanations.R
 7bd5ea16fd166b2c63b994ca0de4b8c0 *R/incomplete.R
 6bdb05e5a2f04360f8a8d3b2dd5756d6 *R/inconsistencies.R
 a2b1dfa256d37c6e82aa9dd1dc3a05cf *R/main.R
 fa81150e9dcd3fe4073fddb732cd3d6b *R/model.R
 2ca67067f6c4432f023804933cccddc1 *R/parameters.R
 3a1729d89240b10be78f37623eabae79 *R/postFactumAnalysis.R
-8f7d113d485910db685ee02efb10bb9a *R/problem.R
+eee1bd66a5521222fd4e3dc80ee7852c *R/problem.R
 0cd8030a7fb6b242cd13755ea0871163 *R/sampling.R
 299baa70fcc3da0533fa205aff37a50e *R/solution.R
 d41d8cd98f00b204e9800998ecf8427e *inst/tests/test-drawing.R
@@ -54,5 +54,5 @@ abd24774d3a744da0e0b0e2e6fb14e7a *man/removeAssignmentPairwiseAtMostComparisons.
 6a2a94208b2aabdbee9928c850803f63 *man/removeAssignmentsUB.Rd
 7709aecaacb17674d2ff330128fd4408 *man/removeMaximalClassCardinalities.Rd
 be37c58491ceca6f1cb88599b4185e33 *man/removeMinimalClassCardinalities.Rd
-332a7852d2e97c01d6557766bc12f9c6 *man/rorutadis-package.Rd
+cb3b3dba205e2e30b9c825010901f1ec *man/rorutadis-package.Rd
 8170f1cb5e01e01aa720b0cbb99c2246 *tests/test-all.R

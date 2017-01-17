@@ -118,13 +118,13 @@ explainAssignment <- function(alternative, classInterval, problem) {
       return (list())
     }
     
-    for (i in 1:length(subsets)) {
-      for (j in 1:ncol(subsets[[i]])) {
+    for (i in seq_len(length(subsets))) {
+      for (j in seq_len(ncol(subsets[[i]]))) {
         subset <- subsets[[i]][, j]
         subsetInOriginal <- c()
         
-        for (i in subset) {
-          subsetInOriginal <- c(subsetInOriginal, prefInfoIndexMap[i])
+        for (element in subset) {
+          subsetInOriginal <- c(subsetInOriginal, prefInfoIndexMap[element])
         }
         
         if (subset[1] > 0) {
@@ -137,8 +137,8 @@ explainAssignment <- function(alternative, classInterval, problem) {
           if (!isModelConsistent(newModel)) {
             preferentialReducts[[length(preferentialReducts) + 1]] <- subsetInOriginal
             
-            for (k in 1:length(subsets)) {
-              for (l in 1:ncol(subsets[[k]])) {
+            for (k in seq_len(length(subsets))) {
+              for (l in seq_len(ncol(subsets[[k]]))) {
                 if (isSuperset(subsets[[k]][, l], subset)) {
                   subsets[[k]][1, l] <- 0
                 }
@@ -189,12 +189,14 @@ getPreferentialCore <- function(preferentialReducts) {
   
   res <- preferentialReducts[[1]]
   
-  for (i in 2:length(preferentialReducts)) {
-    oldRes <- res
-    res <- c()
-    for (j in 1:length(oldRes)) {
-      if (oldRes[j] %in% preferentialReducts[[i]]) {
-        res <- c(res, oldRes[j])
+  if (length(preferentialReducts) > 1) {
+    for (i in 2:length(preferentialReducts)) {
+      oldRes <- res
+      res <- c()
+      for (j in 1:length(oldRes)) {
+        if (oldRes[j] %in% preferentialReducts[[i]]) {
+          res <- c(res, oldRes[j])
+        }
       }
     }
   }

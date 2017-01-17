@@ -96,7 +96,7 @@ addAssignmentsLB <- function(problem, ...) {
     }
     else {
       found <- FALSE
-      for (i in 1:nrow(problem$assignmentsLB)) {
+      for (i in seq_len(nrow(problem$assignmentsLB))) {
         if (problem$assignmentsLB[i, 1] == assignment[1]) {
           problem$assignmentsLB[i, 2] <- assignment[2]
           found <- TRUE
@@ -149,7 +149,7 @@ removeAssignmentsLB <- function(problem, ...) {
     if (!is.null(problem$assignmentsLB)) {
       tmpRestrictions <- NULL
       
-      for (i in 1:nrow(problem$assignmentsLB)) {
+      for (i in seq_len(nrow(problem$assignmentsLB))) {
         if (length(assignment) == 1 &&
               problem$assignmentsLB[i, 1] != assignment[1]) {
           tmpRestrictions <- rbind(tmpRestrictions,
@@ -209,7 +209,7 @@ addAssignmentsUB <- function(problem, ...) {
     }
     else {
       found <- FALSE
-      for (i in 1:nrow(problem$assignmentsUB)) {
+      for (i in seq_len(nrow(problem$assignmentsUB))) {
         if (problem$assignmentsUB[i, 1] == assignment[1]) {
           problem$assignmentsUB[i, 2] <- assignment[2]
           found <- TRUE
@@ -262,7 +262,7 @@ removeAssignmentsUB <- function(problem, ...) {
     if (!is.null(problem$assignmentsUB)) {
       tmpRestrictions <- NULL
       
-      for (i in 1:nrow(problem$assignmentsUB)) {
+      for (i in seq_len(nrow(problem$assignmentsUB))) {
         if (length(assignment) == 1 &&
               problem$assignmentsUB[i, 1] != assignment[1]) {
           tmpRestrictions <- rbind(tmpRestrictions,
@@ -331,7 +331,7 @@ addAssignmentPairwiseAtLeastComparisons <- function(problem, ...) {
     }
     else {
       found <- FALSE
-      for (i in 1:nrow(problem$assignmentPairwiseAtLeastComparisons)) {
+      for (i in seq_len(nrow(problem$assignmentPairwiseAtLeastComparisons))) {
         if (problem$assignmentPairwiseAtLeastComparisons[i, 1] == comparison[1] &&
               problem$assignmentPairwiseAtLeastComparisons[i, 2] == comparison[2]) {
           problem$assignmentPairwiseAtLeastComparisons[i, 3] <- comparison[3]
@@ -387,7 +387,7 @@ removeAssignmentPairwiseAtLeastComparisons <- function(problem, ...) {
     if (!is.null(problem$assignmentPairwiseAtLeastComparisons)) {
       tmpRestrictions <- NULL
       
-      for (i in 1:nrow(problem$assignmentPairwiseAtLeastComparisons)) {
+      for (i in seq_len(nrow(problem$assignmentPairwiseAtLeastComparisons))) {
         if (length(comparison) == 2 &&
               (problem$assignmentPairwiseAtLeastComparisons[i, 1] != comparison[1] ||
                  problem$assignmentPairwiseAtLeastComparisons[i, 2] != comparison[2])) {
@@ -458,7 +458,7 @@ addAssignmentPairwiseAtMostComparisons <- function(problem, ...) {
     }
     else {
       found <- FALSE
-      for (i in 1:nrow(problem$assignmentPairwiseAtMostComparisons)) {
+      for (i in seq_len(nrow(problem$assignmentPairwiseAtMostComparisons))) {
         if (problem$assignmentPairwiseAtMostComparisons[i, 1] == comparison[1] &&
               problem$assignmentPairwiseAtMostComparisons[i, 2] == comparison[2]) {
           problem$assignmentPairwiseAtMostComparisons[i, 3] <- comparison[3]
@@ -512,7 +512,7 @@ removeAssignmentPairwiseAtMostComparisons <- function(problem, ...) {
     if (!is.null(problem$assignmentPairwiseAtMostComparisons)) {
       tmpRestrictions <- NULL
       
-      for (i in 1:nrow(problem$assignmentPairwiseAtMostComparisons)) {
+      for (i in seq_len(nrow(problem$assignmentPairwiseAtMostComparisons))) {
         if (length(comparison) == 2 &&
               (problem$assignmentPairwiseAtMostComparisons[i, 1] != comparison[1] ||
                  problem$assignmentPairwiseAtMostComparisons[i, 2] != comparison[2])) {
@@ -575,7 +575,7 @@ addMinimalClassCardinalities <- function(problem, ...) {
     }
     else {
       found <- FALSE
-      for (i in 1:nrow(problem$minimalClassCardinalities)) {
+      for (i in seq_len(nrow(problem$minimalClassCardinalities))) {
         if (problem$minimalClassCardinalities[i, 1] == cardinalityRestriction[1]) {
           problem$minimalClassCardinalities[i, 2] <- cardinalityRestriction[2]
           found <- TRUE
@@ -628,7 +628,7 @@ removeMinimalClassCardinalities <- function(problem, ...) {
     if (!is.null(problem$minimalClassCardinalities)) {
       tmpRestrictions <- NULL
       
-      for (i in 1:nrow(problem$minimalClassCardinalities)) {
+      for (i in seq_len(nrow(problem$minimalClassCardinalities))) {
         if (length(cardinalityRestriction) == 1 &&
               problem$minimalClassCardinalities[i, 1] != cardinalityRestriction[1]) {
           tmpRestrictions <- rbind(tmpRestrictions,
@@ -689,7 +689,7 @@ addMaximalClassCardinalities <- function(problem, ...) {
     }
     else {
       found <- FALSE
-      for (i in 1:nrow(problem$maximalClassCardinalities)) {
+      for (i in seq_len(nrow(problem$maximalClassCardinalities))) {
         if (problem$maximalClassCardinalities[i, 1] == cardinalityRestriction[1]) {
           problem$maximalClassCardinalities[i, 2] <- cardinalityRestriction[2]
           found <- TRUE
@@ -742,7 +742,7 @@ removeMaximalClassCardinalities <- function(problem, ...) {
     if (!is.null(problem$maximalClassCardinalities)) {
       tmpRestrictions <- NULL
       
-      for (i in 1:nrow(problem$maximalClassCardinalities)) {
+      for (i in seq_len(nrow(problem$maximalClassCardinalities))) {
         if (length(cardinalityRestriction) == 1 &&
               problem$maximalClassCardinalities[i, 1] != cardinalityRestriction[1]) {
           tmpRestrictions <- rbind(tmpRestrictions,

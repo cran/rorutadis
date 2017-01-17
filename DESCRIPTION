@@ -1,17 +1,17 @@
 Package: rorutadis
 Type: Package
 Title: Robust Ordinal Regression UTADIS
-Version: 0.4.1
-Date: 2016-07-13
+Version: 0.4.2
+Date: 2017-01-18
 Author: Krzysztof Ciomek
 Maintainer: Krzysztof Ciomek <k.ciomek@gmail.com>
-URL: https://github.com/kciomek/rorutadis/
+URL: https://github.com/kciomek/rorutadis
 Depends: Rglpk (>= 0.5-1), ggplot2 (>= 0.9.3.1), gridExtra (>= 0.9.1),
         hitandrun (>= 0.5-2)
-Description: Implementation of Robust Ordinal Regression for value-based sorting with some extensions and additional tools. It is a novel Multiple-Criteria Decision Aiding (MCDA) framework.
+Description: Implementation of Robust Ordinal Regression for multiple criteria value-based sorting with preference information provided in form of possibly imprecise assignment examples, assignment-based pairwise comparisons, and desired class cardinalities [Kadzinski et al. 2015, <doi:10.1016/j.ejor.2014.09.050>].
 License: GPL-3
 Suggests: testthat (>= 0.7.1)
 NeedsCompilation: no
-Packaged: 2016-07-13 14:26:46 UTC; Krzysztof
+Packaged: 2017-01-17 20:09:53 UTC; Krzysztof
 Repository: CRAN
-Date/Publication: 2016-07-13 18:28:29
+Date/Publication: 2017-01-17 23:07:43
